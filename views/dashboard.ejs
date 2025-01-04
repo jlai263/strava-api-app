@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>User Dashboard</title>
+    <!-- Include Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Your existing CSS -->
+    <link rel="stylesheet" type="text/css" href="/styles.css">
+</head>
+<body>
+    <div class="left-edge-trigger"></div>
+
+    <!-- Side Navigation -->
+    <div class="navbar">
+        <a href="/dashboard" class="active">Dashboard</a>
+        <a href="/activities">Activities</a>
+        <a href="#">Stats</a>
+        <a href="#">Goals</a>
+        <a href="/logout">Logout</a>
+    </div>
+
+    <!-- Main Dashboard Content -->
+    <div class="page-content">
+        <div class="dashboard-container">
+            <h1>RunningTaper</h1>
+        
+            <!-- Latest Run Stats -->
+            <div class="latest-run">
+                <h2>Latest Run: <%= latestActivity.name %></h2>
+                <p>Distance: <%= distanceKm %> km</p>
+                <p>Duration: <%= durationMinutes %> minutes</p>
+                <p>Average Pace: <%= formattedPace %></p>
+                <p>Elevation Gain: <%= latestActivity.total_elevation_gain %> m</p>
+                <p>Start Date: <%= new Date(latestActivity.start_date_local).toLocaleDateString() %></p>
+                <p><a href="https://www.strava.com/activities/<%= latestActivity.id %>" target="_blank">View on Strava</a></p>
+            </div>
+        
+            <!-- Time Range Selection and Heading -->
+            <div class="time-range">
+                <h2 id="statsHeading" class="stats-heading-left">Your stats for the <span id="statsRangeText" class="red-text">week</span></h2>
+                <select id="timeRangeSelect" onchange="loadStats(this.value)" class="dropdown-menu">
+                    <option value="week">Week</option>
+                    <option value="month">Month</option>
+                    <option value="year">Year</option>
+                </select>
+            </div>
+
+            <!-- Stats and Chart Container -->
+            <div class="stats-chart-container">
+                <!-- Chart Container -->
+                <div class="chart-container">
+                    <canvas id="statsChart"></canvas>
+                </div>
+
+                <!-- Key Stats -->
+                <div class="stat-grid">
+                    <div class="stat-card">
+                        <h2>Total Distance</h2>
+                        <p id="totalDistance">0 km</p>
+                    </div>
+                    <div class="stat-card">
+                        <h2>Total Elevation</h2>
+                        <p id="totalElevation">0 m</p>
+                    </div>
+                    <div class="stat-card">
+                        <h2>Activities</h2>
+                        <p id="numActivities">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h2>Avg. Pace</h2>
+                        <p id="avgPace">0:00 min/km</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let statsChart; // Global variable for the chart
+    
+        function loadStats(timeRange) {
+            fetch(`/stats?range=${timeRange}`)
+                .then(response => response.json())
+                .then(data => {
+                    // Update heading
+                    document.getElementById('statsRangeText').innerText = timeRange;
+    
+                    // Animate stats
+                    animateValue('totalDistance', 0, parseFloat(data.totalDistance), 2000, ' km', 2);
+                    animateValue('totalElevation', 0, parseFloat(data.totalElevation), 2000, ' m', 2);
+                    animateValue('numActivities', 0, parseInt(data.numActivities), 2000, '', 0);
+                    document.getElementById('avgPace').innerText = `${data.avgPace}`;
+    
+                    // Update the chart
+                    updateChart(data.labels, data.data, timeRange);
+                });
+        }
+    
+        function animateValue(id, start, end, duration, suffix, decimals = 2) {
+            let range = end - start;
+            let current = start;
+            let increment = range / (duration / 50);
+            let obj = document.getElementById(id);
+            let timer = setInterval(() => {
+                current += increment;
+                if ((increment > 0 && current >= end) || (increment < 0 && current <= end)) {
+                    current = end;
+                    clearInterval(timer);
+                }
+                obj.innerText = `${current.toFixed(decimals)}${suffix}`;
+            }, 50);
+        }
+    
+        function updateChart(labels, dataValues, timeRange) {
+            if (statsChart) {
+                statsChart.destroy();
+            }
+
+            // Debugging: Log labels and dataValues to the console
+            console.log('Labels:', labels);
+            console.log('Data Values:', dataValues);
+
+            const ctx = document.getElementById('statsChart').getContext('2d');
+            statsChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Distance (km)',
+                        data: dataValues,
+                        backgroundColor: 'rgba(255, 77, 77, 0.7)', // Nice red color with transparency
+                        borderColor: 'rgba(255, 77, 77, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: timeRange === 'year' ? 'Months' : 'Days'
+                            },
+                            offset: true, // Change to true to align labels with bars
+                            ticks: {
+                                autoSkip: false,
+                                maxRotation: 90,
+                                minRotation: 90
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Distance (km)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                title: (context) => {
+                                    const index = context[0].dataIndex;
+                                    return labels[index]; // Use the corresponding label for the tooltip title
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    
+        // Load default stats (e.g., week) when the page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStats('week');
+            document.getElementById('timeRangeSelect').value = 'week';
+        });
+    </script>
+    
+</body>
+</html>

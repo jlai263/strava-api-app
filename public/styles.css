@@ -1,0 +1,313 @@
+/* Importing the Roboto font from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
+
+body {
+    font-family: 'Roboto', sans-serif;
+    background-color: #121212;
+    color: #fff;
+    margin: 0;
+    padding: 0;
+}
+
+h1, h2 {
+    font-family: 'Roboto', sans-serif;
+}
+
+.dashboard-container, .activities-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+h1 {
+    color: #fff;
+    font-size: 36px;
+    text-align: center;
+}
+
+h2 {
+    color: #fff;
+    font-size: 18px;
+    margin-bottom: 10px;
+}
+
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);  /* 3 columns for stats */
+    gap: 20px;  /* Space between the cards */
+}
+
+.stat-card {
+    background-color: #1C1C1C;
+    border-radius: 8px;
+    padding: 15px;
+    text-align: center;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);  /* Slight shadow */
+    transition: transform 0.3s ease;  /* Animation on hover */
+}
+
+.stat-card:hover {
+    transform: scale(1.05);  /* Slight pop-up effect on hover */
+}
+
+.stat-card p {
+    font-size: 16px;
+}
+
+.stat-card h2 {
+    font-size: 22px;
+    margin: 0;
+}
+
+.latest-run img {
+    width: 100%;
+    border-radius: 8px;
+    margin-top: 10px;
+}
+
+/* Trigger area for expanding the sidebar */
+.left-edge-trigger {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 60px;  /* Sensitive area for triggering the sidebar */
+    height: 100%;
+    z-index: 50;  /* Lower than .navbar to prevent overlap */
+    background-color: transparent;  /* Invisible area */
+}
+
+/* Sidebar hidden by default */
+.navbar {
+    width: 0;  /* Fully hidden */
+    background-color: #232323;
+    position: fixed;
+    height: 100%;
+    padding-top: 20px;
+    transition: width 0.3s ease;
+    overflow: hidden;
+    left: 0;
+    z-index: 100;  /* Higher than .left-edge-trigger */
+}
+
+/* Expand the sidebar when hovering over the trigger area or the navbar */
+.left-edge-trigger:hover + .navbar,
+.navbar:hover {
+    width: 200px;
+}
+
+/* Shift content when the sidebar expands */
+.left-edge-trigger:hover ~ .page-content,
+.navbar:hover ~ .page-content {
+    margin-left: 200px;
+    transition: margin-left 0.3s ease;
+}
+
+/* Adjust page content transition */
+.page-content {
+    margin-left: 0;  /* No margin when the sidebar is hidden */
+    transition: margin-left 0.3s ease;
+}
+
+/* Style for the navigation links (hidden when sidebar is collapsed) */
+.navbar a {
+    opacity: 0;  /* Hide text when sidebar is collapsed */
+    padding: 15px;
+    text-decoration: none;
+    font-size: 18px;
+    color: #fff;
+    display: block;
+    transition: opacity 0.3s ease;  /* Smooth hover effect */
+}
+
+/* Show text when sidebar expands */
+.left-edge-trigger:hover + .navbar a,
+.navbar:hover a {
+    opacity: 1;  /* Show text when sidebar is expanded */
+}
+
+.navbar a:hover {
+    background-color: #333;
+    transform: scale(1.05);  /* Pop-up effect on hover */
+}
+
+/* Highlight the active page */
+.navbar a.active {
+    background-color: #555;
+    font-weight: bold;
+}
+
+/* Buttons - nice red color */
+button {
+    background-color: #ff4d4d;  /* Nice red color */
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+button:hover {
+    background-color: #cc0000;  /* Darker red on hover */
+}
+
+.pagination {
+    text-align: center;
+    margin-top: 20px;
+}
+
+.pagination a {
+    padding: 10px 20px;
+    background-color: #007bff;
+    color: white;
+    text-decoration: none;
+    margin: 0 10px;
+    border-radius: 5px;
+}
+
+/* Time Range Selector */
+.time-range {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.time-range button {
+    background-color: #ff4d4d;  /* Nice red color for time range buttons */
+    color: white;
+    padding: 10px 20px;
+    margin: 0 10px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.time-range button:hover {
+    background-color: #cc0000;  /* Darker red on hover */
+}
+
+/* Adjusted layout for stats and chart container */
+.stats-chart-container {
+    display: flex;
+    flex-wrap: wrap;
+    margin-top: 20px;
+    align-items: stretch; /* Make items stretch to the same height */
+}
+
+/* Chart takes up left half */
+.chart-container {
+    flex: 1;
+    min-width: 300px;
+    max-width: 600px;
+    margin-right: 20px;
+    height: 500px; /* Increased the height of the chart */
+}
+
+/* Adjusting the chart canvas */
+#statsChart {
+    max-width: 100%;
+    height: auto;
+}
+
+.chart-container canvas {
+    height: 100% !important; /* Ensure the canvas fills the container */
+}
+
+/* Stat cards in a 2x2 grid */
+.stat-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 20px;
+    height: 500px; /* Match the height of the chart */
+}
+
+/* Ensure stat cards fill the grid cells */
+.stat-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background-color: #1C1C1C;
+    color: #fff;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.stat-card h2 {
+    margin-bottom: 10px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .stats-chart-container {
+        flex-direction: column;
+    }
+
+    .chart-container {
+        margin-right: 0;
+        margin-bottom: 20px;
+    }
+
+    .stat-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: repeat(4, 1fr);
+    }
+}
+
+/* Style for the dropdown menu */
+.dropdown-menu {
+    padding: 10px;
+    font-size: 16px;
+    border-radius: 5px;
+    border: none;
+    background-color: #ff4d4d; /* Nice red color */
+    color: white;
+    cursor: pointer;
+    text-align: center;
+}
+
+.dropdown-menu option {
+    background-color: #fff;
+    color: #000;
+}
+
+/* Styling for the heading */
+.stats-heading-left {
+    text-align: left;
+    font-size: 20px;
+    margin-bottom: 10px;
+}
+
+/* Red text color for the time range */
+.red-text {
+    color: #ff4d4d;
+}
+
+/* Time Range styling */
+.time-range {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .stats-chart-container {
+        flex-direction: column;
+    }
+
+    .chart-container {
+        margin-right: 0;
+        margin-bottom: 20px;
+    }
+
+    .stat-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: repeat(4, 1fr);
+    }
+}
+

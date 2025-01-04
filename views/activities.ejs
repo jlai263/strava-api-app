@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Your Strava Activities</title>
+    <link rel="stylesheet" type="text/css" href="/styles.css">
+</head>
+<body>
+    <div class="left-edge-trigger"></div>
+    <!-- Side Navigation -->
+    <div class="navbar">
+        <a href="/dashboard">Dashboard</a>
+        <a href="/activities">Activities</a>
+        <a href="#">Stats</a>
+        <a href="#">Goals</a>
+        <a href="/logout">Logout</a>
+    </div>
+
+    <!-- Main Page Content -->
+    <div class="page-content">
+        <div class="activities-container">
+            <h1>Your Strava Activities</h1>
+
+            <% activities.forEach(function(activity) { %>
+            <div class="activity">
+                <h2><%= activity.name %></h2>
+                <p>Distance: <%= (activity.distance / 1000).toFixed(2) %> km</p>
+                <p>Duration: <%= (activity.moving_time / 60).toFixed(2) %> minutes</p>
+                <p>Elevation Gain: <%= activity.total_elevation_gain %> m</p>
+                <p>Start Date: <%= new Date(activity.start_date).toLocaleString() %></p>
+                <p><a href="https://www.strava.com/activities/<%= activity.id %>" target="_blank">View on Strava</a></p>
+            </div>
+            <% }); %>
+
+            <!-- Pagination -->
+            <div class="pagination">
+                <% if (currentPage > 1) { %>
+                    <a href="/activities?page=<%= currentPage - 1 %>">Previous</a>
+                <% } %>
+                <% if (hasMorePages) { %>
+                    <a href="/activities?page=<%= currentPage + 1 %>">Next</a>
+                <% } %>
+            </div>
+        </div>
+    </div>
+    
+</body>
+</html>
