@@ -1,0 +1,44 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String     @id
+  accessToken   String
+  refreshToken  String
+  tokenExpires  DateTime
+  activities    Activity[]
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+model Activity {
+  id                 String   @id
+  userId             String
+  user               User     @relation(fields: [userId], references: [id])
+  name               String
+  type               String
+  distance           Float
+  movingTime        Int
+  elapsedTime       Int
+  totalElevationGain Float
+  startDate         DateTime
+  startDateLocal    DateTime
+  timezone          String
+  startLat          Float?
+  startLng          Float?
+  endLat            Float?
+  endLng            Float?
+  averageSpeed      Float
+  maxSpeed          Float
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@index([startDateLocal])
+} 
