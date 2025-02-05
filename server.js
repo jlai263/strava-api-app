@@ -43,8 +43,12 @@ app.use(express.json());
 // Environment check
 const USE_MOCK_DATA = process.env.NODE_ENV === 'development' || process.env.USE_MOCK_DATA === 'true';
 const isProduction = process.env.NODE_ENV === 'production';
-const FRONTEND_URL = isProduction ? 'https://your-domain.com' : 'http://localhost:3000';
-const API_URL = isProduction ? 'https://your-domain.com' : `http://localhost:${process.env.PORT || 5173}`;
+const FRONTEND_URL = process.env.NODE_ENV === 'production' 
+  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` 
+  : 'http://localhost:3000';
+const API_URL = process.env.NODE_ENV === 'production'
+  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+  : `http://localhost:${port}`;
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
@@ -457,7 +461,8 @@ if (isProduction) {
     });
 }
 
-app.listen(port, () => {
+app.listen(port, '0.0.0.0', () => {
     console.log(`Server running on port ${port}`);
-    console.log(`API endpoints available at http://localhost:${port}/api`);
+    console.log(`API URL: ${API_URL}`);
+    console.log(`Frontend URL: ${FRONTEND_URL}`);
 }); 
