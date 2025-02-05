@@ -277,22 +277,32 @@ Key Focus Areas:
 // Mount API routes
 app.use('/api', apiRouter);
 
-// Serve static files with proper MIME types
-app.use(express.static(path.join(__dirname, '.'), {
-    setHeaders: (res, path) => {
-        if (path.endsWith('.ts') || path.endsWith('.tsx')) {
-            res.setHeader('Content-Type', 'text/javascript');
+// Serve static files from the dist directory in production
+if (process.env.NODE_ENV === 'production') {
+    app.use(express.static(path.join(__dirname, 'dist')));
+    
+    // Handle all other routes by serving index.html from dist
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    });
+} else {
+    // Serve static files with proper MIME types in development
+    app.use(express.static(path.join(__dirname, '.'), {
+        setHeaders: (res, path) => {
+            if (path.endsWith('.ts') || path.endsWith('.tsx')) {
+                res.setHeader('Content-Type', 'text/javascript');
+            }
+            if (path.endsWith('.js') || path.endsWith('.jsx') || path.endsWith('.mjs')) {
+                res.setHeader('Content-Type', 'application/javascript');
+            }
         }
-        if (path.endsWith('.js') || path.endsWith('.jsx') || path.endsWith('.mjs')) {
-            res.setHeader('Content-Type', 'application/javascript');
-        }
-    }
-}));
+    }));
 
-// Handle all other routes by serving index.html
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
+    // Handle all other routes by serving index.html
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(__dirname, 'index.html'));
+    });
+}
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
