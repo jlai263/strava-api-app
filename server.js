@@ -35,10 +35,27 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const port = process.env.PORT || 5173;
+const port = process.env.PORT || 8080; // Default to 8080 for Railway
+
+// Log environment variables (excluding sensitive ones)
+console.log('Environment:', {
+  NODE_ENV: process.env.NODE_ENV,
+  PORT: port,
+  MONGODB_URI: process.env.MONGODB_URI ? '(set)' : '(not set)',
+  RAILWAY_PUBLIC_DOMAIN: process.env.RAILWAY_PUBLIC_DOMAIN || '(not set)'
+});
 
 // Parse JSON bodies
 app.use(express.json());
+
+// Health check endpoint - placing it before other middleware
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+  });
+});
 
 // Environment check
 const USE_MOCK_DATA = process.env.NODE_ENV === 'development' || process.env.USE_MOCK_DATA === 'true';
@@ -435,11 +452,6 @@ apiRouter.get('/strava/callback', async (req, res) => {
         console.error('Callback error:', error.response?.data || error.message);
         res.redirect(`${FRONTEND_URL}/error?message=${encodeURIComponent('Failed to authenticate with Strava')}`);
     }
-});
-
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
 });
 
 if (isProduction) {

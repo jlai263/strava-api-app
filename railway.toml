@@ -5,9 +5,11 @@ buildCommand = "npm run build"
 [deploy]
 startCommand = "node server.js"
 healthcheckPath = "/api/health"
-healthcheckTimeout = 300
+healthcheckTimeout = 500
 restartPolicyType = "on_failure"
-healthcheckInterval = 30
+healthcheckInterval = 45
+healthcheckMaxRetries = 5
 
 [deploy.envs]
-NODE_ENV = "production" 
+NODE_ENV = "production"
+PORT = "8080" 
