@@ -81,24 +81,55 @@ if (process.env.NODE_ENV === 'production') {
 
 // CORS configuration
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? process.env.CLIENT_URL 
-    : 'http://localhost:3000',
-  credentials: true
+  origin: function(origin, callback) {
+    const allowedOrigins = [
+      FRONTEND_URL,
+      'https://www.strava.com',
+      'https://strava.com'
+    ];
+    
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) === -1) {
+      console.log('Blocked by CORS:', origin);
+      return callback(null, false);
+    }
+    
+    return callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
 // Security middleware for production
 if (isProduction) {
   app.use((req, res, next) => {
+    // Trust Railway's proxy
+    app.set('trust proxy', true);
+
     // Force HTTPS
-    if (req.headers['x-forwarded-proto'] !== 'https') {
-      return res.redirect(`https://${req.headers.host}${req.url}`);
+    if (!req.secure && req.get('x-forwarded-proto') !== 'https') {
+      // Don't redirect health check requests
+      if (req.path === '/api/health') {
+        return next();
+      }
+      return res.redirect(301, `https://${req.headers.host}${req.url}`);
     }
+
     // Security headers
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    
+    // Allow Strava to frame the app if needed
+    if (req.headers.referer && req.headers.referer.includes('strava.com')) {
+      res.removeHeader('X-Frame-Options');
+    }
+
     next();
   });
 }
@@ -127,14 +158,32 @@ apiRouter.get('/auth/strava', (req, res) => {
     console.log('Auth endpoint hit');
     try {
         const clientId = process.env.STRAVA_CLIENT_ID;
-        const redirectUri = process.env.STRAVA_REDIRECT_URI;
+        if (!clientId) {
+            throw new Error('STRAVA_CLIENT_ID not configured');
+        }
+
+        // Get the current domain for the redirect URI
+        const currentDomain = process.env.NODE_ENV === 'production'
+            ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+            : 'http://localhost:8080';
+            
+        // Construct the redirect URI
+        const redirectUri = `${currentDomain}/api/strava/callback`;
+        
+        console.log('Using redirect URI:', redirectUri);
+
         const scope = 'read,activity:read_all,profile:read_all';
-        const authUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
-        console.log('Redirecting to Strava auth URL:', authUrl);
+        const authUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${scope}`;
+        
+        console.log('Generated Strava auth URL:', authUrl);
         res.json({ authUrl });
     } catch (error) {
         console.error('Strava auth error:', error);
-        res.status(500).json({ error: 'Failed to initiate Strava auth: ' + error.message });
+        res.status(500).json({ 
+            error: 'Failed to initiate Strava auth',
+            details: error.message,
+            timestamp: new Date().toISOString()
+        });
     }
 });
 
