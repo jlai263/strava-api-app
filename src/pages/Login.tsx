@@ -4,22 +4,24 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Sphere } from '@react-three/drei';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { config } from '../utils/config';
 
-const AnimatedSphere = () => (
-  <Sphere args={[1, 32, 32]}>
-    <meshStandardMaterial
-      color="#ff5500"
-      roughness={0.4}
-      metalness={0.8}
-    />
-  </Sphere>
-);
+const AnimatedSphere = () => {
+  return (
+    <Sphere args={[1, 32, 32]}>
+      <meshStandardMaterial
+        color="#ff5500"
+        wireframe
+        roughness={0.5}
+        metalness={0.8}
+      />
+    </Sphere>
+  );
+};
 
 const Login = () => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const stravaAuthUrl = config.getStravaAuthUrl();
+  const stravaAuthUrl = `https://www.strava.com/oauth/authorize?client_id=${process.env.VITE_STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${process.env.VITE_STRAVA_REDIRECT_URI}&scope=read,activity:read_all`;
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -56,7 +58,7 @@ const Login = () => {
           transition={{ delay: 0.3 }}
           className="text-4xl font-bold mb-6 bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent"
         >
-          Strava Analytics
+          Strava Viz
         </motion.h1>
         
         <motion.p
@@ -65,7 +67,7 @@ const Login = () => {
           transition={{ delay: 0.5 }}
           className="text-gray-300 mb-8 max-w-md"
         >
-          Get deeper insights into your training with AI-powered analytics
+          Visualize your running journey in stunning 3D with advanced analytics and beautiful animations.
         </motion.p>
 
         <motion.a
