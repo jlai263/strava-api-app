@@ -13,7 +13,7 @@ body {
 
 @layer base {
   body {
-    @apply bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white min-h-screen;
+    @apply bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white min-h-screen overflow-x-hidden;
   }
 
   ::-webkit-scrollbar {
@@ -31,4 +31,96 @@ body {
   ::-webkit-scrollbar-thumb:hover {
     @apply from-orange-600 to-pink-600;
   }
+}
+
+@layer components {
+  .glass {
+    @apply bg-black/20 backdrop-blur-[20px] border border-white/10 shadow-lg;
+  }
+
+  .glass-card {
+    @apply glass rounded-xl transition-all duration-300;
+  }
+
+  .glass-card:hover {
+    @apply border-white/15 -translate-y-0.5;
+    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.45);
+  }
+
+  .blob-container {
+    @apply fixed inset-0 overflow-hidden z-0 pointer-events-none;
+    filter: blur(60px);
+    opacity: 0.5;
+  }
+
+  .blob {
+    @apply absolute mix-blend-screen;
+    border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+    transition: transform 0.3s cubic-bezier(0.075, 0.82, 0.165, 1);
+    will-change: transform, border-radius, opacity;
+    animation: blobAnimation 20s ease-in-out infinite;
+  }
+
+  .stat-card {
+    @apply glass-card p-6;
+  }
+
+  .activity-card {
+    @apply glass-card p-6 hover:bg-black/40;
+  }
+
+  .primary-button {
+    @apply px-4 py-2 bg-gradient-to-r from-orange-500 to-pink-500 text-white rounded-lg 
+           hover:from-orange-600 hover:to-pink-600 transition-all duration-300 
+           focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 focus:ring-offset-gray-900;
+  }
+
+  .secondary-button {
+    @apply px-4 py-2 glass rounded-lg text-gray-300 hover:bg-white/10 
+           transition-all duration-300 focus:outline-none focus:ring-2 
+           focus:ring-white/20 focus:ring-offset-2 focus:ring-offset-gray-900;
+  }
+
+  .page-container {
+    @apply min-h-screen pt-20 px-4 sm:px-6 lg:px-8 relative z-10;
+  }
+
+  .content-container {
+    @apply max-w-7xl mx-auto space-y-8;
+  }
+}
+
+@keyframes blobAnimation {
+  0% {
+    border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+    transform: translate(0px, 0px) rotate(0deg) scale(1);
+  }
+  25% {
+    border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%;
+    transform: translate(50px, -50px) rotate(90deg) scale(1.1);
+  }
+  50% {
+    border-radius: 40% 60% 30% 70% / 60% 40% 70% 30%;
+    transform: translate(-30px, 30px) rotate(180deg) scale(0.9);
+  }
+  75% {
+    border-radius: 60% 40% 70% 30% / 30% 60% 40% 70%;
+    transform: translate(50px, 50px) rotate(270deg) scale(1.05);
+  }
+  100% {
+    border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+    transform: translate(0px, 0px) rotate(360deg) scale(1);
+  }
+}
+
+.animate-blob {
+  animation: blobAnimation 20s ease-in-out infinite;
+}
+
+.animation-delay-2000 {
+  animation-delay: -6s;
+}
+
+.animation-delay-4000 {
+  animation-delay: -12s;
 } 

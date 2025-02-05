@@ -1,11 +1,15 @@
-const mockAthlete = {
+export const mockAthlete = {
     id: 12345,
-    username: "mockrunner",
+    username: "mockuser",
     firstname: "Mock",
-    lastname: "Runner",
-    city: "Running City",
-    state: "RC",
-    profile: "https://dgalywyr863hv.cloudfront.net/pictures/athletes/12345/12345/1/large.jpg"
+    lastname: "User",
+    city: "Mock City",
+    state: "MC",
+    country: "MCY",
+    sex: "M",
+    premium: true,
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-01T00:00:00Z"
 };
 
 // Generate a year of mock activities
@@ -177,9 +181,5 @@ function generateMockActivities() {
     return activities.sort((a, b) => new Date(b.start_date) - new Date(a.start_date));
 }
 
-const mockActivities = generateMockActivities();
-
-module.exports = {
-    mockAthlete,
-    mockActivities
-}; 
+const generatedActivities = generateMockActivities();
+export const mockActivities = generatedActivities; 

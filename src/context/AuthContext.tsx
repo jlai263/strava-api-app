@@ -3,8 +3,9 @@ import axios from 'axios';
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  login: (code: string) => Promise<void>;
-  logout: () => Promise<void>;
+  accessToken: string | null;
+  login: (tokens: any) => void;
+  logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -18,43 +19,69 @@ export const useAuth = () => {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check if user is authenticated on mount
-    const checkAuth = async () => {
-      try {
-        const response = await axios.get('/api/auth/check');
-        setIsAuthenticated(response.data.isAuthenticated);
-      } catch (error) {
-        setIsAuthenticated(false);
+    // Check URL parameters for tokens on mount
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    const expiresAt = params.get('expires_at');
+
+    if (token && refreshToken && expiresAt) {
+      login({ access_token: token, refresh_token: refreshToken, expires_at: expiresAt });
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else {
+      // Check localStorage for existing tokens
+      const storedTokens = localStorage.getItem('stravaTokens');
+      if (storedTokens) {
+        const tokens = JSON.parse(storedTokens);
+        const expiresAt = parseInt(tokens.expires_at) * 1000; // Convert to milliseconds
+        
+        // Check if token is expired or will expire in the next 5 minutes
+        if (Date.now() >= expiresAt - 300000) { // 5 minutes in milliseconds
+          // Token is expired or will expire soon, try to refresh
+          refreshAccessToken(tokens.refresh_token);
+        } else {
+          setAccessToken(tokens.access_token);
+          setIsAuthenticated(true);
+          axios.defaults.headers.common['Authorization'] = `Bearer ${tokens.access_token}`;
+        }
       }
-    };
-    checkAuth();
+    }
   }, []);
 
-  const login = async (code: string) => {
+  const refreshAccessToken = async (refreshToken: string) => {
     try {
-      await axios.get(`/api/auth/callback?code=${code}`);
-      setIsAuthenticated(true);
+      const response = await axios.post('/api/auth/refresh', { refresh_token: refreshToken });
+      const { access_token, refresh_token, expires_at } = response.data;
+      
+      login({ access_token, refresh_token, expires_at });
     } catch (error) {
-      console.error('Login failed:', error);
-      throw error;
+      console.error('Failed to refresh token:', error);
+      logout(); // Force logout if refresh fails
     }
   };
 
-  const logout = async () => {
-    try {
-      await axios.get('/api/auth/logout');
-      setIsAuthenticated(false);
-    } catch (error) {
-      console.error('Logout failed:', error);
-      throw error;
-    }
+  const login = (tokens: any) => {
+    localStorage.setItem('stravaTokens', JSON.stringify(tokens));
+    setAccessToken(tokens.access_token);
+    setIsAuthenticated(true);
+    axios.defaults.headers.common['Authorization'] = `Bearer ${tokens.access_token}`;
+  };
+
+  const logout = () => {
+    localStorage.removeItem('stravaTokens');
+    setAccessToken(null);
+    setIsAuthenticated(false);
+    delete axios.defaults.headers.common['Authorization'];
+    window.location.href = '/';
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, accessToken, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

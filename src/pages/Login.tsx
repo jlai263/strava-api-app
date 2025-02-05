@@ -58,7 +58,7 @@ const Login = () => {
           transition={{ delay: 0.3 }}
           className="text-4xl font-bold mb-6 bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent"
         >
-          Strava Viz
+          RunSights
         </motion.h1>
         
         <motion.p

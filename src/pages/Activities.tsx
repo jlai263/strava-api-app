@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
 
 interface Activity {
   id: string;
@@ -11,6 +12,7 @@ interface Activity {
   total_elevation_gain: number;
   start_date_local: string;
   average_speed: number;
+  average_heartrate: number;
 }
 
 const ActivityCard: React.FC<{ activity: Activity }> = ({ activity }) => {
@@ -29,42 +31,57 @@ const ActivityCard: React.FC<{ activity: Activity }> = ({ activity }) => {
     return `${hours}h ${minutes}m`;
   };
 
+  const calculatePace = (distance: number, time: number) => {
+    const km = distance / 1000;
+    const minutes = time / 60;
+    const pace = minutes / km;
+    const paceMinutes = Math.floor(pace);
+    const paceSeconds = Math.round((pace - paceMinutes) * 60);
+    return `${paceMinutes}:${paceSeconds.toString().padStart(2, '0')}/km`;
+  };
+
   return (
     <motion.div
       layout
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      className="bg-black/30 backdrop-blur-md p-6 rounded-xl hover:bg-black/40 transition-colors"
+      className="glass-card p-4 sm:p-6"
     >
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
         <div>
-          <h3 className="text-xl font-semibold text-white mb-2">{activity.name}</h3>
-          <p className="text-gray-400">{formatDate(activity.start_date_local)}</p>
+          <h3 className="text-lg sm:text-xl font-semibold text-white mb-1">{activity.name}</h3>
+          <p className="text-sm text-gray-400">{formatDate(activity.start_date_local)}</p>
         </div>
-        <div className="flex items-center space-x-4">
-          <div className="text-right">
-            <p className="text-sm text-gray-400">Distance</p>
-            <p className="text-lg font-semibold text-white">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 sm:gap-6">
+          <div className="text-center sm:text-right">
+            <p className="text-xs sm:text-sm text-gray-400">Distance</p>
+            <p className="text-base sm:text-lg font-semibold text-white">
               {(activity.distance / 1000).toFixed(2)} km
             </p>
           </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-400">Time</p>
-            <p className="text-lg font-semibold text-white">
+          <div className="text-center sm:text-right">
+            <p className="text-xs sm:text-sm text-gray-400">Time</p>
+            <p className="text-base sm:text-lg font-semibold text-white">
               {formatDuration(activity.moving_time)}
             </p>
           </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-400">Elevation</p>
-            <p className="text-lg font-semibold text-white">
+          <div className="text-center sm:text-right">
+            <p className="text-xs sm:text-sm text-gray-400">Pace</p>
+            <p className="text-base sm:text-lg font-semibold text-white">
+              {calculatePace(activity.distance, activity.moving_time)}
+            </p>
+          </div>
+          <div className="text-center sm:text-right">
+            <p className="text-xs sm:text-sm text-gray-400">Elevation</p>
+            <p className="text-base sm:text-lg font-semibold text-white">
               {activity.total_elevation_gain.toFixed(0)}m
             </p>
           </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-400">Avg Speed</p>
-            <p className="text-lg font-semibold text-white">
-              {(activity.average_speed * 3.6).toFixed(1)} km/h
+          <div className="text-center sm:text-right">
+            <p className="text-xs sm:text-sm text-gray-400">Heart Rate</p>
+            <p className="text-base sm:text-lg font-semibold text-white">
+              {activity.average_heartrate ? Math.round(activity.average_heartrate) : '--'} bpm
             </p>
           </div>
         </div>
@@ -74,6 +91,7 @@ const ActivityCard: React.FC<{ activity: Activity }> = ({ activity }) => {
 };
 
 const Activities = () => {
+  const { accessToken } = useAuth();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [filteredActivities, setFilteredActivities] = useState<Activity[]>([]);
   const [filter, setFilter] = useState('all');
@@ -83,9 +101,27 @@ const Activities = () => {
   useEffect(() => {
     const fetchActivities = async () => {
       try {
-        const response = await axios.get('/api/activities');
-        setActivities(response.data);
-        setFilteredActivities(response.data);
+        setLoading(true);
+        console.log('Fetching activities...');
+        const response = await axios.get('/api/strava/activities', {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+        console.log('Activities received:', response.data.length);
+        
+        // Filter for running activities only (including treadmill runs)
+        const runningActivities = response.data.filter((activity: Activity) => 
+          activity.type.toLowerCase().includes('run')
+        );
+        
+        // Sort activities by date in descending order (most recent first)
+        const sortedActivities = runningActivities.sort((a: Activity, b: Activity) => 
+          new Date(b.start_date_local).getTime() - new Date(a.start_date_local).getTime()
+        );
+        
+        setActivities(sortedActivities);
+        setFilteredActivities(sortedActivities);
       } catch (error) {
         console.error('Error fetching activities:', error);
       } finally {
@@ -93,8 +129,10 @@ const Activities = () => {
       }
     };
 
-    fetchActivities();
-  }, []);
+    if (accessToken) {
+      fetchActivities();
+    }
+  }, [accessToken]);
 
   useEffect(() => {
     let filtered = activities;
@@ -116,28 +154,31 @@ const Activities = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen pt-16 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-orange-500"></div>
+      <div className="page-container flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-orange-500 mb-4"></div>
+          <p className="text-gray-400">Loading activities...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen pt-16 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="page-container">
+      <div className="content-container">
         {/* Filters */}
-        <div className="mb-8 flex flex-col sm:flex-row items-center justify-between space-y-4 sm:space-y-0">
-          <div className="flex space-x-4">
+        <div className="flex flex-col space-y-4 mb-6 sm:mb-8">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {['all', 'run', 'ride', 'swim'].map(type => (
               <motion.button
                 key={type}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setFilter(type)}
-                className={`px-4 py-2 rounded-lg font-medium ${
+                className={`px-3 py-2 sm:px-4 sm:py-2 rounded-lg font-medium text-sm sm:text-base ${
                   filter === type
                     ? 'bg-gradient-to-r from-orange-500 to-pink-500 text-white'
-                    : 'bg-black/30 text-gray-300 hover:bg-black/40'
+                    : 'glass text-gray-300 hover:bg-white/10'
                 }`}
               >
                 {type.charAt(0).toUpperCase() + type.slice(1)}
@@ -150,7 +191,7 @@ const Activities = () => {
             placeholder="Search activities..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full sm:w-64 px-4 py-2 rounded-lg bg-black/30 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
+            className="w-full px-4 py-2 rounded-lg glass text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
           />
         </div>
 

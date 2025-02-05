@@ -1,56 +1,140 @@
-require('dotenv').config();
-const express = require('express');
-const path = require('path');
-const axios = require('axios');
-const { mockAthlete, mockActivities } = require('./mock/strava-data');
+import dotenv from 'dotenv';
+import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import axios from 'axios';
+import cors from 'cors';
+import mongoose from 'mongoose';
+import User from './models/User.js';
+import Activity from './models/Activity.js';
+import { mockAthlete, mockActivities } from './mock/strava-data.js';
+
+dotenv.config();
+
+// MongoDB Connection
+mongoose.connect(process.env.MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  maxPoolSize: 10,
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+  family: 4 // Use IPv4, skip trying IPv6
+}).then(() => {
+  console.log('Connected to MongoDB');
+  if (isProduction) {
+    console.log('Running in production mode');
+  } else {
+    console.log('Running in development mode');
+  }
+}).catch(err => {
+  console.error('MongoDB connection error:', err);
+  process.exit(1);
+});
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(express.json());
+const port = process.env.PORT || 5173;
 
-// Configure MIME types
-express.static.mime.define({
-    'application/javascript': ['js', 'mjs'],
-    'text/javascript': ['ts', 'tsx', 'jsx']
-});
+// Parse JSON bodies
+app.use(express.json());
 
 // Environment check
 const USE_MOCK_DATA = process.env.NODE_ENV === 'development' || process.env.USE_MOCK_DATA === 'true';
 const isProduction = process.env.NODE_ENV === 'production';
+const FRONTEND_URL = isProduction ? 'https://your-domain.com' : 'http://localhost:3000';
+const API_URL = isProduction ? 'https://your-domain.com' : `http://localhost:${process.env.PORT || 5173}`;
+
+// Serve static files in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static('dist'));
+  
+  // Handle client-side routing
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+    }
+  });
+}
+
+// CORS configuration
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? process.env.CLIENT_URL 
+    : 'http://localhost:3000',
+  credentials: true
+}));
+
+// Security middleware for production
+if (isProduction) {
+  app.use((req, res, next) => {
+    // Force HTTPS
+    if (req.headers['x-forwarded-proto'] !== 'https') {
+      return res.redirect(`https://${req.headers.host}${req.url}`);
+    }
+    // Security headers
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    next();
+  });
+}
 
 // API Routes
 const apiRouter = express.Router();
 
+// Mount API routes
+app.use('/api', apiRouter);
+
+// Log all API requests
+apiRouter.use((req, res, next) => {
+  console.log(`${req.method} ${req.url}`);
+  next();
+});
+
+// Cache for Strava activities
+const activitiesCache = {
+    data: null,
+    timestamp: null,
+    CACHE_DURATION: 15 * 60 * 1000 // 15 minutes
+};
+
 // Endpoint to initiate Strava OAuth
 apiRouter.get('/auth/strava', (req, res) => {
-    if (USE_MOCK_DATA) {
-        res.json({ authUrl: '/mock-auth' });
-        return;
-    }
-
+    console.log('Auth endpoint hit');
     try {
         const clientId = process.env.STRAVA_CLIENT_ID;
         const redirectUri = process.env.STRAVA_REDIRECT_URI;
         const scope = 'read,activity:read_all,profile:read_all';
         const authUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
+        console.log('Redirecting to Strava auth URL:', authUrl);
         res.json({ authUrl });
     } catch (error) {
         console.error('Strava auth error:', error);
-        res.status(500).json({ error: 'Failed to initiate Strava auth' });
+        res.status(500).json({ error: 'Failed to initiate Strava auth: ' + error.message });
     }
 });
 
 // Mock auth endpoint
 apiRouter.get('/mock-auth', (req, res) => {
-    // Simulate a small delay to mimic network request
-    setTimeout(() => {
-        res.json({
+    console.log('Mock auth endpoint hit');
+    try {
+        const mockResponse = {
+            status: 'success',
             access_token: 'mock_access_token_' + Date.now(),
             refresh_token: 'mock_refresh_token_' + Date.now(),
             athlete: mockAthlete,
-            expires_at: Math.floor(Date.now() / 1000) + 21600, // Expires in 6 hours
+            expires_at: Math.floor(Date.now() / 1000) + 21600,
             expires_in: 21600
-        });
-    }, 500);
+        };
+        console.log('Sending mock response:', mockResponse);
+        res.json(mockResponse);
+    } catch (error) {
+        console.error('Mock auth error:', error);
+        res.status(500).json({ error: 'Failed to complete mock authentication', details: error.message });
+    }
 });
 
 // Endpoint to exchange code for token
@@ -106,190 +190,273 @@ apiRouter.post('/auth/refresh', async (req, res) => {
 
 // Proxy endpoint for Strava API calls
 apiRouter.get('/strava/activities', async (req, res) => {
-    if (USE_MOCK_DATA) {
-        // Simulate network delay
-        await new Promise(resolve => setTimeout(resolve, 500));
-        res.json(mockActivities);
-        return;
-    }
-
+    console.log('Activities endpoint hit');
+    
     try {
-        const { access_token } = req.query;
+        const accessToken = req.headers.authorization?.split(' ')[1] || req.query.access_token;
+        
+        if (!accessToken) {
+            return res.status(401).json({ error: 'No access token provided' });
+        }
+
+        // First, try to get activities from MongoDB
+        const user = await User.findOne({ accessToken });
+        if (!user) {
+            return res.status(401).json({ error: 'User not found' });
+        }
+
+        // Check if we need to refresh data from Strava
+        const lastSync = user.lastSync ? new Date(user.lastSync) : new Date(0);
+        const syncThreshold = 15 * 60 * 1000; // 15 minutes in milliseconds
+        const shouldSync = Date.now() - lastSync.getTime() > syncThreshold;
+
+        if (!shouldSync && activitiesCache.data) {
+            console.log('Returning cached activities data');
+            return res.json(activitiesCache.data);
+        }
+
+        // Get activities from the last 30 days from Strava
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
         const response = await axios.get('https://www.strava.com/api/v3/athlete/activities', {
-            headers: { Authorization: `Bearer ${access_token}` },
-            params: { per_page: 10 }
+            headers: { Authorization: `Bearer ${accessToken}` },
+            params: {
+                after: Math.floor(thirtyDaysAgo.getTime() / 1000),
+                per_page: 100,
+                page: 1
+            }
         });
-        res.json(response.data);
+
+        // Transform and store activities
+        const activities = await Promise.all(response.data.map(async (activity) => {
+            const transformedActivity = {
+                stravaId: activity.id.toString(),
+                userId: user._id,
+                name: activity.name,
+                type: activity.type,
+                distance: activity.distance,
+                movingTime: activity.moving_time,
+                elapsedTime: activity.elapsed_time,
+                totalElevationGain: activity.total_elevation_gain,
+                startDate: new Date(activity.start_date),
+                averageHeartrate: activity.average_heartrate,
+                maxHeartrate: activity.max_heartrate,
+                averageSpeed: activity.average_speed,
+                maxSpeed: activity.max_speed,
+                startLatlng: activity.start_latlng,
+                endLatlng: activity.end_latlng
+            };
+
+            // Use findOneAndUpdate to upsert the activity
+            const savedActivity = await Activity.findOneAndUpdate(
+                { stravaId: transformedActivity.stravaId },
+                transformedActivity,
+                { upsert: true, new: true }
+            );
+
+            return {
+                id: savedActivity.stravaId,
+                name: savedActivity.name,
+                distance: savedActivity.distance,
+                moving_time: savedActivity.movingTime,
+                elapsed_time: savedActivity.elapsedTime,
+                total_elevation_gain: savedActivity.totalElevationGain,
+                start_date: savedActivity.startDate,
+                start_date_local: savedActivity.startDate,
+                type: savedActivity.type,
+                average_heartrate: savedActivity.averageHeartrate,
+                max_heartrate: savedActivity.maxHeartrate,
+                average_speed: savedActivity.averageSpeed,
+                max_speed: savedActivity.maxSpeed
+            };
+        }));
+
+        // Update user's lastSync timestamp
+        await User.findByIdAndUpdate(user._id, { lastSync: new Date() });
+
+        // Update cache
+        activitiesCache.data = activities;
+        activitiesCache.timestamp = Date.now();
+
+        console.log('Sending activities:', activities.length);
+        res.json(activities);
     } catch (error) {
-        console.error('Activities fetch error:', error.response?.data || error.message);
-        res.status(error.response?.status || 500).json({ error: 'Failed to fetch activities' });
+        console.error('Error fetching Strava activities:', error.response?.data || error.message);
+        res.status(error.response?.status || 500).json({ 
+            error: 'Failed to fetch activities',
+            details: error.response?.data || error.message
+        });
     }
 });
 
-// Proxy endpoint for OpenAI API calls
+// AI Analysis endpoint
 apiRouter.post('/ai/analyze', async (req, res) => {
     try {
-        const { activities, prompt } = req.body;
-        
-        // Validate request
-        if (!activities || !prompt) {
-            return res.status(400).json({ error: 'Missing required data' });
+        console.log('Received analysis request with data:', req.body);
+        const { activities, trainingLoad, zoneDistribution } = req.body;
+
+        // Validate request data
+        if (!activities || !Array.isArray(activities) || activities.length === 0) {
+            return res.status(400).json({ error: 'No activities data provided' });
         }
 
-        if (USE_MOCK_DATA) {
-            // Return mock analysis after a delay
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            return res.json({
-                choices: [{
-                    message: {
-                        content: generateMockAnalysis(prompt, activities)
-                    }
-                }]
-            });
+        if (!trainingLoad || !zoneDistribution) {
+            return res.status(400).json({ error: 'Missing training load or zone distribution data' });
         }
+
+        // Format the data for analysis, handling potential undefined values
+        const last30DaysActivities = activities.map(activity => {
+            const date = activity.date || activity.start_date_local;
+            if (!date) {
+                console.warn('Activity missing date:', activity);
+                return null;
+            }
+
+            // Handle date formatting safely
+            let formattedDate = date;
+            if (typeof date === 'string') {
+                formattedDate = date.includes('T') ? date.split('T')[0] : date;
+            }
+
+            return {
+                date: formattedDate,
+                distance: Math.round((activity.distance || 0) / 1000), // km
+                duration: Math.round((activity.moving_time || activity.duration || 0) / 60), // minutes
+                type: activity.type || 'unknown',
+                heartrate: activity.average_heartrate || activity.heartrate || null
+            };
+        }).filter(Boolean); // Remove null entries
+
+        if (last30DaysActivities.length === 0) {
+            return res.status(400).json({ error: 'No valid activities data after formatting' });
+        }
+
+        // Create a detailed prompt for the AI
+        const prompt = `As an expert running coach, analyze this athlete's training data:
+
+1. Recent Activities (Last 30 Days):
+${JSON.stringify(last30DaysActivities, null, 2)}
+
+2. Training Load:
+- Acute Load: ${trainingLoad.acute}
+- Chronic Load: ${trainingLoad.chronic}
+- A:C Ratio: ${trainingLoad.ratio}
+
+3. Heart Rate Zone Distribution:
+- Zone 1 (Recovery): ${zoneDistribution.zone1}%
+- Zone 2 (Aerobic): ${zoneDistribution.zone2}%
+- Zone 3 (Tempo): ${zoneDistribution.zone3}%
+- Zone 4 (Threshold): ${zoneDistribution.zone4}%
+- Zone 5 (VO2 Max): ${zoneDistribution.zone5}%
+
+Please provide a detailed analysis including:
+1. Current training status and load assessment
+2. Recovery and fatigue analysis
+3. Training intensity distribution evaluation
+4. Specific recommendations for improvement
+5. Injury risk assessment
+6. Suggested adjustments to training pattern`;
 
         const response = await axios.post('https://api.openai.com/v1/chat/completions', {
-            model: "gpt-3.5-turbo-16k", // Using 16k model for longer responses
-            messages: [{
-                role: "system",
-                content: "You are an expert running coach and exercise physiologist with deep knowledge of training principles, race prediction, and injury prevention."
-            }, {
-                role: "user",
-                content: prompt
-            }],
+            model: "gpt-3.5-turbo-16k",
+            messages: [
+                {
+                    role: "system",
+                    content: "You are an expert running coach and exercise physiologist with deep knowledge of training principles, exercise science, and injury prevention. Provide specific, actionable advice based on the athlete's data."
+                },
+                {
+                    role: "user",
+                    content: prompt
+                }
+            ],
             temperature: 0.7,
-            max_tokens: 2000 // Allow for longer responses
+            max_tokens: 2000
         }, {
             headers: {
                 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
                 'Content-Type': 'application/json'
             }
         });
+
         res.json(response.data);
     } catch (error) {
         console.error('AI analysis error:', error.response?.data || error.message);
-        const errorMessage = error.response?.data?.error?.message || 'Failed to get AI analysis';
+        const errorMessage = error.response?.data?.error?.message || error.message || 'Failed to get AI analysis';
         res.status(error.response?.status || 500).json({ error: errorMessage });
     }
 });
 
-// Helper function to generate mock analysis
-function generateMockAnalysis(prompt, activities) {
-    if (prompt.includes('training load')) {
-        return `Training Load Analysis
+// Strava callback handler
+apiRouter.get('/strava/callback', async (req, res) => {
+    try {
+        const { code } = req.query;
+        if (!code) {
+            return res.status(400).json({ error: 'No authorization code provided' });
+        }
 
-1. Current Training Load Status:
-• Current status: OPTIMAL
-• Weekly volume is consistent and well-structured
-• No immediate signs of overtraining
+        const tokenResponse = await axios.post('https://www.strava.com/oauth/token', {
+            client_id: process.env.STRAVA_CLIENT_ID,
+            client_secret: process.env.STRAVA_CLIENT_SECRET,
+            code,
+            grant_type: 'authorization_code'
+        });
 
-2. Weekly Mileage Trend:
-• Average weekly distance: 35.2 km
-• Trend: Gradually increasing
-• Recommendation: Continue progressive overload
+        const { athlete, access_token, refresh_token, expires_at } = tokenResponse.data;
+        
+        await User.findOneAndUpdate(
+            { stravaId: athlete.id.toString() },
+            {
+                stravaId: athlete.id.toString(),
+                accessToken: access_token,
+                refreshToken: refresh_token,
+                expiresAt: new Date(expires_at * 1000),
+                profile: {
+                    firstName: athlete.firstname,
+                    lastName: athlete.lastname,
+                    avatar: athlete.profile
+                }
+            },
+            { upsert: true, new: true }
+        );
 
-3. Intensity Distribution:
-• 80% Easy/Low intensity
-• 15% Moderate intensity
-• 5% High intensity
-• Distribution is ideal for base building
-
-4. Recovery Status:
-• Current recovery: Good
-• Recommendation: Maintain current easy/hard balance
-• Consider adding one recovery week every 4 weeks
-
-5. Injury Risk Assessment:
-• Current risk: LOW
-• Good progression in training load
-• No sudden spikes in weekly mileage
-• Continue current approach`;
-    } else if (prompt.includes('predict their race times')) {
-        return `Race Time Predictions
-
-1. Current Fitness Assessment:
-• Strong aerobic base
-• Good consistency in training
-• Ready for race-specific training
-
-2. Predicted Race Times:
-• 5K: 22:30 (High confidence)
-• 10K: 46:45 (High confidence)
-• Half Marathon: 1:43:30 (Medium confidence)
-• Marathon: 3:45:00 (Low confidence)
-
-3. Confidence Levels Explained:
-• High confidence for shorter distances based on recent training
-• Lower confidence for marathon due to limited long runs
-
-4. Training Recommendations:
-• Add more long runs for marathon preparation
-• Include tempo runs for 10K-specific training
-• Incorporate track workouts for 5K speed
-
-5. Key Workouts:
-• 5K: 8x400m intervals at 5K pace
-• 10K: 2x3K at goal race pace
-• Half: 15K progressive runs
-• Marathon: Regular 30K long runs`;
-    } else if (prompt.includes('provide training advice')) {
-        return `AI Coach Analysis
-
-1. Training Pattern Analysis:
-• Good mix of workouts with proper progression
-• Consistent training frequency
-• Appropriate recovery periods between hard sessions
-
-2. Areas for Improvement:
-• Consider adding more structured speedwork
-• Gradually increase long run distance
-• Include more hill training for strength
-
-3. Recovery Recommendations:
-• Current recovery seems adequate
-• Continue with easy days between hard sessions
-• Focus on sleep and nutrition
-
-4. Suggested Training Plan:
-Monday: Easy Recovery Run (6-8km)
-Tuesday: Speed Session (8x400m)
-Wednesday: Rest or Cross-Training
-Thursday: Tempo Run (6-8km)
-Friday: Easy Run (5km)
-Saturday: Long Run (12-15km)
-Sunday: Rest or Light Cross-Training
-
-Key Focus Areas:
-• Build aerobic base through consistent mileage
-• Improve speed through structured intervals
-• Maintain proper recovery between sessions`;
+        // Use environment-specific URL
+        const redirectUrl = new URL(`${FRONTEND_URL}/dashboard`);
+        redirectUrl.searchParams.set('access_token', access_token);
+        redirectUrl.searchParams.set('refresh_token', refresh_token);
+        redirectUrl.searchParams.set('expires_at', expires_at);
+        
+        res.redirect(redirectUrl.toString());
+    } catch (error) {
+        console.error('Callback error:', error.response?.data || error.message);
+        res.redirect(`${FRONTEND_URL}/error?message=${encodeURIComponent('Failed to authenticate with Strava')}`);
     }
-    return 'Analysis not available for this type of request.';
-}
+});
 
-// Mount API routes first
-app.use('/api', apiRouter);
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
 
-// Serve static files and handle client-side routing in production
 if (isProduction) {
     // Serve static files from the dist directory
     app.use(express.static(path.join(__dirname, 'dist')));
     
-    // Handle all other routes by serving index.html
-    app.get('/*', (req, res) => {
-        res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    // Handle all routes by serving index.html
+    app.get('*', (req, res) => {
+        if (!req.path.startsWith('/api')) {
+            res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+        }
     });
 } else {
-    // Development CORS headers
-    app.use((req, res, next) => {
-        res.header('Access-Control-Allow-Origin', '*');
-        res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-        next();
+    // In development, only handle API routes
+    app.get('*', (req, res) => {
+        if (!req.path.startsWith('/api')) {
+            res.redirect(`http://localhost:5173${req.path}`);
+        }
     });
 }
 
-const port = process.env.PORT || 3000;
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
     console.log(`API endpoints available at http://localhost:${port}/api`);
