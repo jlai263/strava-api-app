@@ -15,14 +15,22 @@ express.static.mime.define({
 
 // Environment check
 const USE_MOCK_DATA = process.env.NODE_ENV === 'development' || process.env.USE_MOCK_DATA === 'true';
+const isProduction = process.env.NODE_ENV === 'production';
 
-// Middleware to handle CORS
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-    next();
-});
+// Serve static files from the dist directory in production
+if (isProduction) {
+    app.use(express.static(path.join(__dirname, 'dist')));
+}
+
+// Middleware to handle CORS in development
+if (!isProduction) {
+    app.use((req, res, next) => {
+        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+        next();
+    });
+}
 
 // API Routes
 const apiRouter = express.Router();
@@ -277,35 +285,15 @@ Key Focus Areas:
 // Mount API routes
 app.use('/api', apiRouter);
 
-// Serve static files from the dist directory in production
-if (process.env.NODE_ENV === 'production') {
-    app.use(express.static(path.join(__dirname, 'dist')));
-    
-    // Handle all other routes by serving index.html from dist
+// Serve index.html for all other routes in production
+if (isProduction) {
     app.get('*', (req, res) => {
         res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });
-} else {
-    // Serve static files with proper MIME types in development
-    app.use(express.static(path.join(__dirname, '.'), {
-        setHeaders: (res, path) => {
-            if (path.endsWith('.ts') || path.endsWith('.tsx')) {
-                res.setHeader('Content-Type', 'text/javascript');
-            }
-            if (path.endsWith('.js') || path.endsWith('.jsx') || path.endsWith('.mjs')) {
-                res.setHeader('Content-Type', 'application/javascript');
-            }
-        }
-    }));
-
-    // Handle all other routes by serving index.html
-    app.get('*', (req, res) => {
-        res.sendFile(path.join(__dirname, 'index.html'));
-    });
 }
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`API endpoints available at http://localhost:${PORT}/api`);
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+    console.log(`API endpoints available at http://localhost:${port}/api`);
 }); 
