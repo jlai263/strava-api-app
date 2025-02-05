@@ -17,21 +17,6 @@ express.static.mime.define({
 const USE_MOCK_DATA = process.env.NODE_ENV === 'development' || process.env.USE_MOCK_DATA === 'true';
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Serve static files from the dist directory in production
-if (isProduction) {
-    app.use(express.static(path.join(__dirname, 'dist')));
-}
-
-// Middleware to handle CORS in development
-if (!isProduction) {
-    app.use((req, res, next) => {
-        res.header('Access-Control-Allow-Origin', '*');
-        res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-        next();
-    });
-}
-
 // API Routes
 const apiRouter = express.Router();
 
@@ -282,13 +267,25 @@ Key Focus Areas:
     return 'Analysis not available for this type of request.';
 }
 
-// Mount API routes
+// Mount API routes first
 app.use('/api', apiRouter);
 
-// Serve index.html for all other routes in production
+// Serve static files and handle client-side routing in production
 if (isProduction) {
-    app.get('*', (req, res) => {
+    // Serve static files from the dist directory
+    app.use(express.static(path.join(__dirname, 'dist')));
+    
+    // Handle all other routes by serving index.html
+    app.get('/*', (req, res) => {
         res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    });
+} else {
+    // Development CORS headers
+    app.use((req, res, next) => {
+        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+        next();
     });
 }
 
