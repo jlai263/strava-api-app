@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const axios = require('axios');
+const fs = require('fs');
 const { mockAthlete, mockActivities } = require('./mock/strava-data');
 
 const app = express();
@@ -9,14 +10,20 @@ app.use(express.json());
 
 // Environment check
 const USE_MOCK_DATA = process.env.NODE_ENV === 'development' || process.env.USE_MOCK_DATA === 'true';
+const isProd = process.env.NODE_ENV === 'production';
 
-// Middleware to handle CORS
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-    next();
-});
+// Middleware to handle CORS (only in development)
+if (!isProd) {
+    app.use((req, res, next) => {
+        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+        next();
+    });
+}
+
+// Serve static files from the public directory
+app.use(express.static(path.join(__dirname, 'public')));
 
 // API Routes
 const apiRouter = express.Router();
@@ -268,19 +275,30 @@ Key Focus Areas:
     return 'Analysis not available for this type of request.';
 }
 
-// Mount API routes
+// Mount API router
 app.use('/api', apiRouter);
 
-// Serve static files after API routes
-app.use(express.static(path.join(__dirname, '.')));
+// Handle React routing in production
+if (isProd) {
+    // Read and cache the index.html file
+    const indexPath = path.join(__dirname, 'public', 'index.html');
+    let indexHtml = fs.readFileSync(indexPath, 'utf8');
+    
+    // Replace environment variables
+    indexHtml = indexHtml.replace('%STRAVA_CLIENT_ID%', process.env.STRAVA_CLIENT_ID);
+    
+    app.get('*', (req, res) => {
+        res.send(indexHtml);
+    });
+} else {
+    app.get('*', (req, res) => {
+        let indexHtml = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+        indexHtml = indexHtml.replace('%STRAVA_CLIENT_ID%', process.env.STRAVA_CLIENT_ID);
+        res.send(indexHtml);
+    });
+}
 
-// Handle all other routes by serving index.html
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`API endpoints available at http://localhost:${PORT}/api`);
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+    console.log(`Server running on port ${port} in ${process.env.NODE_ENV || 'development'} mode`);
 }); 
