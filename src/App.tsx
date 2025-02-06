@@ -242,32 +242,26 @@ function App() {
       setLoading(true);
       setError(null);
       console.log('Initiating Strava connection...');
-      console.log('Environment:', {
-        NODE_ENV: process.env.NODE_ENV,
-        VITE_API_URL: import.meta.env.VITE_API_URL,
-        VITE_STRAVA_CLIENT_ID: import.meta.env.VITE_STRAVA_CLIENT_ID
-      });
       
-      const response = await fetch('/api/auth/strava');
-      console.log('Raw response:', response);
+      // @ts-ignore
+      const clientId = __VITE_STRAVA_CLIENT_ID__;
+      // @ts-ignore
+      const redirectUri = __VITE_STRAVA_REDIRECT_URI__;
       
-      if (!response.ok) {
-        throw new Error(`Failed to connect to Strava: ${response.statusText} (${response.status})`);
+      if (!clientId) {
+        throw new Error('Strava Client ID not configured');
       }
       
-      const data = await response.json();
-      console.log('Auth response data:', data);
-      
-      if (data.error) {
-        throw new Error(data.error);
+      if (!redirectUri) {
+        throw new Error('Strava Redirect URI not configured');
       }
+
+      // Construct the Strava OAuth URL directly
+      const scope = 'read,activity:read_all,profile:read_all';
+      const authUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${scope}&approval_prompt=force`;
       
-      if (data.authUrl) {
-        console.log('Redirecting to Strava auth URL:', data.authUrl);
-        window.location.href = data.authUrl;
-      } else {
-        throw new Error('Invalid response from server: missing authUrl');
-      }
+      console.log('Redirecting to Strava auth URL:', authUrl);
+      window.location.href = authUrl;
     } catch (error) {
       console.error('Strava connection error:', error);
       setError(error instanceof Error ? error.message : 'Failed to connect with Strava');
