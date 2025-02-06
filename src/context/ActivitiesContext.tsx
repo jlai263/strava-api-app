@@ -41,7 +41,9 @@ export interface ActivitiesContextType {
 const ActivitiesContext = createContext<ActivitiesContextType | undefined>(undefined);
 
 const CACHE_KEY = 'strava_activities_cache';
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes local cache
+const CACHE_METADATA_KEY = 'strava_activities_metadata';
+const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours for full refresh
+const SYNC_CHECK_DURATION = 15 * 60 * 1000;  // 15 minutes for sync check
 
 export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -60,74 +62,79 @@ export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setIsLoading(true);
       setError(null);
 
-      // Check local storage cache first (unless force refresh)
-      if (!force) {
-        const cachedData = localStorage.getItem(CACHE_KEY);
-        if (cachedData) {
-          const { data, timestamp } = JSON.parse(cachedData);
-          const age = Date.now() - timestamp;
-          
-          if (age < CACHE_DURATION) {
-            console.log('[ActivitiesContext] Using local cache, age:', Math.round(age / 1000), 'seconds');
-            setActivities(data);
-            setIsLoading(false);
-            return;
-          } else {
-            console.log('[ActivitiesContext] Cache expired, age:', Math.round(age / 1000), 'seconds');
-          }
-        } else {
-          console.log('[ActivitiesContext] No cache found');
-        }
-      } else {
-        console.log('[ActivitiesContext] Force refresh requested');
+      // Check cache metadata
+      const metadataStr = localStorage.getItem(CACHE_METADATA_KEY);
+      const metadata = metadataStr ? JSON.parse(metadataStr) : {
+        lastFullSync: 0,
+        lastSyncCheck: 0,
+        totalActivities: 0
+      };
+
+      const now = Date.now();
+      const cachedData = localStorage.getItem(CACHE_KEY);
+      
+      // Determine if we need a full refresh or just a sync check
+      const needsFullRefresh = force || !cachedData || (now - metadata.lastFullSync > CACHE_DURATION);
+      const needsSyncCheck = now - metadata.lastSyncCheck > SYNC_CHECK_DURATION;
+
+      if (!needsFullRefresh && !needsSyncCheck && cachedData) {
+        console.log('[ActivitiesContext] Using cached data');
+        setActivities(JSON.parse(cachedData));
+        setIsLoading(false);
+        return;
       }
 
-      // Fetch from our server (which handles MongoDB caching)
-      console.log('[ActivitiesContext] Fetching from server...');
+      // Fetch from server
+      console.log(`[ActivitiesContext] ${needsFullRefresh ? 'Full refresh' : 'Sync check'} requested`);
       const response = await axios.get('/api/strava/activities', {
         headers: {
           'Authorization': `Bearer ${accessToken}`
+        },
+        params: {
+          fullSync: needsFullRefresh
         }
       });
 
-      console.log('[ActivitiesContext] Server response received:', {
-        status: response.status,
-        dataCount: response.data.length
-      });
+      if (response.data.length === 0) {
+        throw new Error('No activities received from server');
+      }
 
       // Sort activities by date (most recent first)
       const sortedActivities = response.data.sort((a, b) => 
         new Date(b.start_date_local).getTime() - new Date(a.start_date_local).getTime()
       );
 
-      // Update state and cache
-      setActivities(sortedActivities);
-      localStorage.setItem(CACHE_KEY, JSON.stringify({
-        data: sortedActivities,
-        timestamp: Date.now()
+      // Update cache and metadata
+      localStorage.setItem(CACHE_KEY, JSON.stringify(sortedActivities));
+      localStorage.setItem(CACHE_METADATA_KEY, JSON.stringify({
+        lastFullSync: needsFullRefresh ? now : metadata.lastFullSync,
+        lastSyncCheck: now,
+        totalActivities: sortedActivities.length
       }));
-      console.log('[ActivitiesContext] Cache updated with', sortedActivities.length, 'activities');
+
+      console.log(`[ActivitiesContext] Cache updated with ${sortedActivities.length} activities`);
+      setActivities(sortedActivities);
 
     } catch (error) {
       console.error('[ActivitiesContext] Error:', error);
       setError(error instanceof Error ? error.message : 'Failed to fetch activities');
       
-      // If API fails, try to use cached data even if expired
+      // If API fails, try to use cached data
       const cachedData = localStorage.getItem(CACHE_KEY);
       if (cachedData) {
-        const { data } = JSON.parse(cachedData);
-        console.log('[ActivitiesContext] Using expired cache due to error');
-        setActivities(data);
+        console.log('[ActivitiesContext] Using cached data after error');
+        setActivities(JSON.parse(cachedData));
       }
     } finally {
       setIsLoading(false);
     }
   }, [accessToken]);
 
-  // Initial fetch
+  // Initial fetch - only force refresh if no cache exists
   useEffect(() => {
     console.log('[ActivitiesContext] Provider mounted');
-    fetchActivities(true); // Force refresh on mount
+    const cachedData = localStorage.getItem(CACHE_KEY);
+    fetchActivities(!cachedData);
     return () => {
       console.log('[ActivitiesContext] Provider unmounted');
     };
