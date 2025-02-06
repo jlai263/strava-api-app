@@ -251,6 +251,8 @@ async function fetchStravaActivities(accessToken: string, after?: number): Promi
   let page = 1;
   let allActivities: any[] = [];
   let hasMore = true;
+  const PER_PAGE = 200; // Maximum allowed by Strava API
+  const RATE_LIMIT_DELAY = 1000; // 1 second delay between requests
 
   while (hasMore) {
     try {
@@ -261,15 +263,23 @@ async function fetchStravaActivities(accessToken: string, after?: number): Promi
         await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY));
       }
 
+      // Build params object
+      const params: any = {
+        per_page: PER_PAGE,
+        page: page
+      };
+
+      // Only add after parameter if it's a valid timestamp
+      if (after && after > 0) {
+        console.log(`[Strava API] Including activities after timestamp: ${new Date(after * 1000).toISOString()}`);
+        params.after = after;
+      }
+
       const response = await axios.get('https://www.strava.com/api/v3/athlete/activities', {
         headers: {
           'Authorization': `Bearer ${accessToken}`
         },
-        params: {
-          per_page: PER_PAGE,
-          page: page,
-          after: after
-        }
+        params: params
       });
 
       const activities = response.data;
@@ -281,9 +291,32 @@ async function fetchStravaActivities(accessToken: string, after?: number): Promi
         break;
       }
 
+      // Log the date range of activities received
+      if (activities.length > 0) {
+        const newest = new Date(activities[0].start_date);
+        const oldest = new Date(activities[activities.length - 1].start_date);
+        console.log(`[Strava API] Page ${page} activities range: ${oldest.toISOString()} to ${newest.toISOString()}`);
+      }
+
       allActivities = [...allActivities, ...activities];
       console.log(`[Strava API] Total activities fetched so far: ${allActivities.length}`);
       
+      // Check rate limits from response headers
+      const rateLimit = {
+        limit: parseInt(response.headers['x-ratelimit-limit'] || '100'),
+        usage: parseInt(response.headers['x-ratelimit-usage'] || '0'),
+        reset: parseInt(response.headers['x-ratelimit-reset'] || '900')
+      };
+
+      console.log(`[Strava API] Rate limits - Usage: ${rateLimit.usage}/${rateLimit.limit}, Reset: ${rateLimit.reset}s`);
+
+      // If we're close to the rate limit, add a delay
+      if (rateLimit.usage > rateLimit.limit * 0.8) {
+        const delayMs = Math.max(RATE_LIMIT_DELAY * 2, 2000);
+        console.log(`[Strava API] Approaching rate limit, adding delay of ${delayMs}ms`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+
       // If we got less than PER_PAGE activities, we've reached the end
       if (activities.length < PER_PAGE) {
         console.log('[Strava API] Received less than PER_PAGE activities, ending pagination');
@@ -298,7 +331,7 @@ async function fetchStravaActivities(accessToken: string, after?: number): Promi
       
       // Handle rate limiting
       if (error.response?.status === 429) {
-        const waitTime = parseInt(error.response.headers['x-ratelimit-reset'] || '900'); // Default to 15 minutes
+        const waitTime = parseInt(error.response.headers['x-ratelimit-reset'] || '900');
         console.log(`[Strava API] Rate limited. Waiting ${waitTime} seconds...`);
         await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
         continue; // Retry the same page after waiting
@@ -313,6 +346,15 @@ async function fetchStravaActivities(accessToken: string, after?: number): Promi
       }
       throw error; // Re-throw if we have no activities
     }
+  }
+
+  // Sort activities by date (newest first) before returning
+  allActivities.sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+  
+  if (allActivities.length > 0) {
+    const newest = new Date(allActivities[0].start_date);
+    const oldest = new Date(allActivities[allActivities.length - 1].start_date);
+    console.log(`[Strava API] Final activities range: ${oldest.toISOString()} to ${newest.toISOString()}`);
   }
 
   console.log(`[Strava API] Successfully fetched all ${allActivities.length} activities`);
@@ -336,7 +378,10 @@ async function updateMongoCache(userId: string, activities: any[]): Promise<void
             ...activity,
             strava_id: activity.id.toString(),
             user_id: userId,
-            last_updated: new Date()
+            start_date: new Date(activity.start_date),
+            start_date_local: new Date(activity.start_date_local),
+            last_updated: new Date(),
+            last_strava_sync: new Date()
           }
         },
         upsert: true
@@ -346,6 +391,12 @@ async function updateMongoCache(userId: string, activities: any[]): Promise<void
     if (operations.length > 0) {
       const result = await collection.bulkWrite(operations);
       console.log(`[MongoDB] Updated ${result.modifiedCount} activities, inserted ${result.upsertedCount} new activities`);
+      
+      // Log the date range of activities being cached
+      const dates = activities.map(a => new Date(a.start_date));
+      const newest = new Date(Math.max(...dates.map(d => d.getTime())));
+      const oldest = new Date(Math.min(...dates.map(d => d.getTime())));
+      console.log(`[MongoDB] Cached activities range: ${oldest.toISOString()} to ${newest.toISOString()}`);
     }
 
   } catch (error) {

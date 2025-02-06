@@ -97,35 +97,55 @@ export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       // Fetch from server with appropriate sync type
       console.log(`[ActivitiesContext] ${needsFullRefresh ? 'Full refresh' : 'Sync check'} requested`);
-      const response = await axios.get('/api/strava/activities', {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        },
-        params: {
-          fullSync: needsFullRefresh
+      
+      try {
+        const response = await axios.get('/api/strava/activities', {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          },
+          params: {
+            fullSync: needsFullRefresh
+          }
+        });
+
+        if (!response.data || !Array.isArray(response.data)) {
+          throw new Error('Invalid response from server');
         }
-      });
 
-      if (!response.data || !Array.isArray(response.data)) {
-        throw new Error('Invalid response from server');
+        // Log the date range of activities received
+        if (response.data.length > 0) {
+          const dates = response.data.map(a => new Date(a.start_date));
+          const newest = new Date(Math.max(...dates.map(d => d.getTime())));
+          const oldest = new Date(Math.min(...dates.map(d => d.getTime())));
+          console.log(`[ActivitiesContext] Received activities range: ${oldest.toISOString()} to ${newest.toISOString()}`);
+        }
+
+        // Sort activities by date (most recent first)
+        const sortedActivities = response.data.sort((a, b) => 
+          new Date(b.start_date_local).getTime() - new Date(a.start_date_local).getTime()
+        );
+
+        // Update cache and metadata
+        localStorage.setItem(CACHE_KEY, JSON.stringify(sortedActivities));
+        localStorage.setItem(CACHE_METADATA_KEY, JSON.stringify({
+          lastFullSync: needsFullRefresh ? now : metadata.lastFullSync,
+          lastSyncCheck: now,
+          totalActivities: sortedActivities.length,
+          syncInProgress: false
+        }));
+
+        console.log(`[ActivitiesContext] Cache updated with ${sortedActivities.length} activities`);
+        setActivities(sortedActivities);
+
+      } catch (error) {
+        console.error('[ActivitiesContext] Error:', error);
+        throw error; // Re-throw to be caught by outer try-catch
+      } finally {
+        // Ensure sync flag is cleared even if there's an error
+        const currentMetadata = JSON.parse(localStorage.getItem(CACHE_METADATA_KEY) || '{}');
+        currentMetadata.syncInProgress = false;
+        localStorage.setItem(CACHE_METADATA_KEY, JSON.stringify(currentMetadata));
       }
-
-      // Sort activities by date (most recent first)
-      const sortedActivities = response.data.sort((a, b) => 
-        new Date(b.start_date_local).getTime() - new Date(a.start_date_local).getTime()
-      );
-
-      // Update cache and metadata
-      localStorage.setItem(CACHE_KEY, JSON.stringify(sortedActivities));
-      localStorage.setItem(CACHE_METADATA_KEY, JSON.stringify({
-        lastFullSync: needsFullRefresh ? now : metadata.lastFullSync,
-        lastSyncCheck: now,
-        totalActivities: sortedActivities.length,
-        syncInProgress: false
-      }));
-
-      console.log(`[ActivitiesContext] Cache updated with ${sortedActivities.length} activities`);
-      setActivities(sortedActivities);
 
     } catch (error) {
       console.error('[ActivitiesContext] Error:', error);
@@ -136,14 +156,6 @@ export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (cachedData) {
         console.log('[ActivitiesContext] Using cached data after error');
         setActivities(JSON.parse(cachedData));
-      }
-
-      // Clear sync in progress flag in case of error
-      const metadataStr = localStorage.getItem(CACHE_METADATA_KEY);
-      if (metadataStr) {
-        const metadata = JSON.parse(metadataStr);
-        metadata.syncInProgress = false;
-        localStorage.setItem(CACHE_METADATA_KEY, JSON.stringify(metadata));
       }
     } finally {
       setIsLoading(false);
