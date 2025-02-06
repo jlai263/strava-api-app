@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "module": "CommonJS",
+    "module": "ESNext",
     "moduleResolution": "node",
     "outDir": "./dist/server",
     "noEmit": false,
@@ -9,7 +9,8 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
-    "types": ["node", "express", "express-session"]
+    "types": ["node", "express", "express-session", "mongoose"],
+    "rootDir": "server"
   },
   "include": [
     "server/**/*"
