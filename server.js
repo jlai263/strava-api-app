@@ -549,7 +549,13 @@ apiRouter.get('/strava/callback', async (req, res) => {
       return res.redirect(`${FRONTEND_URL}/?error=no_code`);
     }
 
-    console.log('Exchanging code for token...');
+    console.log('Exchanging code for token with params:', {
+      client_id: process.env.STRAVA_CLIENT_ID,
+      client_secret: '***' + process.env.STRAVA_CLIENT_SECRET.slice(-4),
+      code,
+      grant_type: 'authorization_code'
+    });
+
     // Exchange code for token
     const tokenResponse = await axios.post('https://www.strava.com/oauth/token', {
       client_id: process.env.STRAVA_CLIENT_ID,
@@ -558,18 +564,26 @@ apiRouter.get('/strava/callback', async (req, res) => {
       grant_type: 'authorization_code'
     });
 
+    if (!tokenResponse.data || !tokenResponse.data.access_token) {
+      console.error('Invalid token response:', tokenResponse.data);
+      throw new Error('Invalid token response from Strava');
+    }
+
     console.log('Token exchange successful, response:', {
-      access_token: tokenResponse.data.access_token ? '✓' : '✗',
+      access_token: '✓',
       refresh_token: tokenResponse.data.refresh_token ? '✓' : '✗',
       expires_at: tokenResponse.data.expires_at,
       athlete: tokenResponse.data.athlete ? '✓' : '✗'
     });
 
-    // Store tokens in localStorage (client will read these from the URL)
-    const redirectUrl = `${FRONTEND_URL}/?access_token=${tokenResponse.data.access_token}&refresh_token=${tokenResponse.data.refresh_token}&expires_at=${tokenResponse.data.expires_at}`;
+    // Construct the redirect URL with tokens
+    const redirectUrl = new URL(FRONTEND_URL);
+    redirectUrl.searchParams.set('access_token', tokenResponse.data.access_token);
+    redirectUrl.searchParams.set('refresh_token', tokenResponse.data.refresh_token);
+    redirectUrl.searchParams.set('expires_at', tokenResponse.data.expires_at.toString());
     
-    console.log('Redirecting to frontend:', FRONTEND_URL);
-    res.redirect(redirectUrl);
+    console.log('Redirecting to frontend:', redirectUrl.origin + '/**tokens**');
+    res.redirect(redirectUrl.toString());
   } catch (error) {
     console.error('Error in Strava callback:', error.response?.data || error.message);
     const errorMessage = error.response?.data?.message || error.message || 'Failed to complete authentication';
