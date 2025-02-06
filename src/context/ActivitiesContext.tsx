@@ -67,8 +67,15 @@ export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const metadata = metadataStr ? JSON.parse(metadataStr) : {
         lastFullSync: 0,
         lastSyncCheck: 0,
-        totalActivities: 0
+        totalActivities: 0,
+        syncInProgress: false
       };
+
+      // Prevent multiple syncs from running simultaneously
+      if (metadata.syncInProgress && !force) {
+        console.log('[ActivitiesContext] Sync already in progress, skipping...');
+        return;
+      }
 
       const now = Date.now();
       const cachedData = localStorage.getItem(CACHE_KEY);
@@ -84,7 +91,11 @@ export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return;
       }
 
-      // Fetch from server
+      // Update metadata to indicate sync in progress
+      metadata.syncInProgress = true;
+      localStorage.setItem(CACHE_METADATA_KEY, JSON.stringify(metadata));
+
+      // Fetch from server with appropriate sync type
       console.log(`[ActivitiesContext] ${needsFullRefresh ? 'Full refresh' : 'Sync check'} requested`);
       const response = await axios.get('/api/strava/activities', {
         headers: {
@@ -95,8 +106,8 @@ export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
       });
 
-      if (response.data.length === 0) {
-        throw new Error('No activities received from server');
+      if (!response.data || !Array.isArray(response.data)) {
+        throw new Error('Invalid response from server');
       }
 
       // Sort activities by date (most recent first)
@@ -109,7 +120,8 @@ export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       localStorage.setItem(CACHE_METADATA_KEY, JSON.stringify({
         lastFullSync: needsFullRefresh ? now : metadata.lastFullSync,
         lastSyncCheck: now,
-        totalActivities: sortedActivities.length
+        totalActivities: sortedActivities.length,
+        syncInProgress: false
       }));
 
       console.log(`[ActivitiesContext] Cache updated with ${sortedActivities.length} activities`);
@@ -124,6 +136,14 @@ export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (cachedData) {
         console.log('[ActivitiesContext] Using cached data after error');
         setActivities(JSON.parse(cachedData));
+      }
+
+      // Clear sync in progress flag in case of error
+      const metadataStr = localStorage.getItem(CACHE_METADATA_KEY);
+      if (metadataStr) {
+        const metadata = JSON.parse(metadataStr);
+        metadata.syncInProgress = false;
+        localStorage.setItem(CACHE_METADATA_KEY, JSON.stringify(metadata));
       }
     } finally {
       setIsLoading(false);
