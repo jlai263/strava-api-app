@@ -68,7 +68,7 @@ async function fetchStravaActivities(accessToken, since = null) {
   let page = 1;
   let allActivities = [];
   let hasMore = true;
-  const PER_PAGE = 100; // Maximum allowed by Strava API
+  const PER_PAGE = 200; // Maximum allowed by Strava API
 
   while (hasMore) {
     console.log(`[Strava API] Fetching page ${page}...`);
@@ -81,25 +81,40 @@ async function fetchStravaActivities(accessToken, since = null) {
       params.after = Math.floor(since.getTime() / 1000); // Convert to Unix timestamp
     }
 
-    const stravaResponse = await axios.get('https://www.strava.com/api/v3/athlete/activities', {
-      headers: { 'Authorization': `Bearer ${accessToken}` },
-      params
-    });
+    try {
+      const stravaResponse = await axios.get('https://www.strava.com/api/v3/athlete/activities', {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+        params
+      });
 
-    const pageActivities = stravaResponse.data;
-    console.log(`[Strava API] Received ${pageActivities.length} activities on page ${page}`);
+      const pageActivities = stravaResponse.data;
+      console.log(`[Strava API] Received ${pageActivities.length} activities on page ${page}`);
 
-    if (pageActivities.length === 0) {
-      hasMore = false;
-    } else {
-      allActivities = [...allActivities, ...pageActivities];
-      page++;
+      if (pageActivities.length === 0) {
+        hasMore = false;
+        console.log('[Strava API] No more activities to fetch');
+      } else {
+        allActivities = [...allActivities, ...pageActivities];
+        console.log(`[Strava API] Total activities so far: ${allActivities.length}`);
+        page++;
+      }
+
+      // Add a small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 500));
+    } catch (error) {
+      console.error(`[Strava API] Error fetching page ${page}:`, error.response?.data || error.message);
+      hasMore = false; // Stop on error
+      
+      // If we have some activities, return them even if we hit an error
+      if (allActivities.length > 0) {
+        console.log(`[Strava API] Returning ${allActivities.length} activities collected before error`);
+        return allActivities;
+      }
+      throw error; // Re-throw if we have no activities
     }
-
-    // Add a small delay to avoid rate limiting
-    await new Promise(resolve => setTimeout(resolve, 100));
   }
 
+  console.log(`[Strava API] Successfully fetched all ${allActivities.length} activities`);
   return allActivities;
 }
 
