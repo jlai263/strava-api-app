@@ -249,12 +249,17 @@ function App() {
         redirectUriExists: !!import.meta.env.VITE_STRAVA_REDIRECT_URI,
         apiUrlExists: !!import.meta.env.VITE_API_URL,
         clientId: import.meta.env.VITE_STRAVA_CLIENT_ID,
-        redirectUri: import.meta.env.VITE_STRAVA_REDIRECT_URI
+        redirectUri: import.meta.env.VITE_STRAVA_REDIRECT_URI,
+        apiUrl: import.meta.env.VITE_API_URL
       });
 
       // First try to check if the API is reachable
       try {
+        console.log('Checking API health...');
         const healthCheck = await fetch('/api/health');
+        if (!healthCheck.ok) {
+          throw new Error(`Health check failed with status: ${healthCheck.status}`);
+        }
         const healthData = await healthCheck.json();
         console.log('Health check response:', healthData);
       } catch (healthError) {
@@ -281,10 +286,13 @@ function App() {
       }
 
       const data = await response.json();
-      console.log('Auth response data:', data);
+      console.log('Auth response data:', {
+        hasUrl: !!data.url,
+        url: data.url ? data.url.substring(0, 50) + '...' : null
+      });
 
       if (data.url) {
-        console.log('Redirecting to Strava auth URL:', data.url);
+        console.log('Redirecting to Strava auth URL...');
         window.location.href = data.url;
       } else {
         throw new Error('No authorization URL received from server');

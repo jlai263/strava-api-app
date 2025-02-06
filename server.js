@@ -221,8 +221,25 @@ const activitiesCache = {
 
 // Strava OAuth endpoint
 apiRouter.get('/auth/strava', (req, res) => {
-  const stravaAuthUrl = `https://www.strava.com/oauth/authorize?client_id=${process.env.STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${process.env.STRAVA_REDIRECT_URI}&scope=read,activity:read_all`;
-  res.json({ url: stravaAuthUrl });
+  try {
+    console.log('Starting Strava auth process...');
+    console.log('Environment variables check:', {
+      clientId: process.env.STRAVA_CLIENT_ID,
+      redirectUri: process.env.STRAVA_REDIRECT_URI,
+      nodeEnv: process.env.NODE_ENV,
+      apiUrl: API_URL,
+      frontendUrl: FRONTEND_URL
+    });
+
+    const stravaAuthUrl = `https://www.strava.com/oauth/authorize?client_id=${process.env.STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(process.env.STRAVA_REDIRECT_URI)}&scope=read,activity:read_all`;
+    
+    console.log('Generated Strava auth URL:', stravaAuthUrl);
+    
+    res.json({ url: stravaAuthUrl });
+  } catch (error) {
+    console.error('Error in Strava auth endpoint:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Mock auth endpoint
@@ -445,7 +462,11 @@ Please provide a detailed analysis including:
 // Strava OAuth callback endpoint
 apiRouter.get('/strava/callback', async (req, res) => {
   try {
-    console.log('Strava callback received:', req.query);
+    console.log('Strava callback received:', {
+      query: req.query,
+      headers: req.headers,
+      url: req.url
+    });
     const { code, error, scope } = req.query;
 
     if (error) {
@@ -470,13 +491,14 @@ apiRouter.get('/strava/callback', async (req, res) => {
     console.log('Token exchange successful, response:', {
       access_token: tokenResponse.data.access_token ? '✓' : '✗',
       refresh_token: tokenResponse.data.refresh_token ? '✓' : '✗',
-      expires_at: tokenResponse.data.expires_at
+      expires_at: tokenResponse.data.expires_at,
+      athlete: tokenResponse.data.athlete ? '✓' : '✗'
     });
 
     // Store tokens in localStorage (client will read these from the URL)
     const redirectUrl = `${FRONTEND_URL}/?access_token=${tokenResponse.data.access_token}&refresh_token=${tokenResponse.data.refresh_token}&expires_at=${tokenResponse.data.expires_at}`;
     
-    console.log('Redirecting to frontend with tokens');
+    console.log('Redirecting to frontend:', FRONTEND_URL);
     res.redirect(redirectUrl);
   } catch (error) {
     console.error('Error in Strava callback:', error.response?.data || error.message);
