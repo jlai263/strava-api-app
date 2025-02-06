@@ -325,22 +325,23 @@ apiRouter.get('/strava/activities', async (req, res) => {
             });
         }
 
-        // Check if we have recent activities in MongoDB
-        const cacheTimeout = 15 * 60 * 1000; // 15 minutes
-        console.log('Checking MongoDB cache for user:', userId);
-        const recentActivities = await Activity.find({
-            userId: userId,
-            lastUpdated: { $gt: new Date(Date.now() - cacheTimeout) }
-        })
-        .sort({ start_date: -1 })
-        .limit(30);
+        // Check if we need to refresh data from Strava
+        const REFRESH_INTERVAL = 60 * 60 * 1000; // 1 hour
+        const needsRefresh = await Activity.needsRefresh(userId, REFRESH_INTERVAL);
+        
+        // If we don't need a refresh, return cached data
+        if (!needsRefresh) {
+            console.log('Using cached data from MongoDB');
+            const cachedActivities = await Activity.find({ userId })
+                .sort({ start_date: -1 })
+                .limit(30);
 
-        if (recentActivities.length > 0) {
-            console.log('Returning cached activities from MongoDB');
-            return res.json(recentActivities);
+            if (cachedActivities.length > 0) {
+                return res.json(cachedActivities);
+            }
         }
 
-        // If no recent cache, fetch from Strava
+        // If we need a refresh or have no cached data, fetch from Strava
         console.log('Fetching fresh activities from Strava...');
         const response = await axios.get('https://www.strava.com/api/v3/athlete/activities', {
             headers: { 'Authorization': `Bearer ${accessToken}` },
@@ -355,6 +356,7 @@ apiRouter.get('/strava/activities', async (req, res) => {
         console.log(`Storing ${activities.length} activities in MongoDB`);
 
         // Transform activities for storage
+        const now = new Date();
         const bulkOps = activities.map(activity => ({
             updateOne: {
                 filter: { stravaId: activity.id },
@@ -379,7 +381,9 @@ apiRouter.get('/strava/activities', async (req, res) => {
                         elev_low: activity.elev_low,
                         description: activity.description,
                         calories: activity.calories,
-                        lastUpdated: new Date()
+                        lastUpdated: now,
+                        lastStravaSync: now,
+                        dataSource: 'strava'
                     }
                 },
                 upsert: true
@@ -398,6 +402,23 @@ apiRouter.get('/strava/activities', async (req, res) => {
         
     } catch (error) {
         console.error('Error in activities endpoint:', error.response?.data || error.message);
+        
+        // If Strava API fails, try to return cached data
+        if (userId) {
+            try {
+                console.log('Attempting to return cached data after API error');
+                const cachedActivities = await Activity.find({ userId })
+                    .sort({ start_date: -1 })
+                    .limit(30);
+
+                if (cachedActivities.length > 0) {
+                    return res.json(cachedActivities);
+                }
+            } catch (cacheError) {
+                console.error('Error fetching cached data:', cacheError);
+            }
+        }
+
         if (error.response?.status === 401) {
             return res.status(401).json({ 
                 error: 'Authentication failed',

@@ -33,11 +33,36 @@ const activitySchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
     index: true
+  },
+  lastStravaSync: {
+    type: Date,
+    default: Date.now,
+    index: true
+  },
+  dataSource: {
+    type: String,
+    enum: ['strava', 'manual'],
+    default: 'strava'
   }
 });
 
 // Index for efficient querying of recent activities
 activitySchema.index({ userId: 1, start_date: -1 });
+activitySchema.index({ userId: 1, lastStravaSync: -1 });
+
+// Static method to check if user's data needs refresh
+activitySchema.statics.needsRefresh = async function(userId, refreshInterval = 60 * 60 * 1000) { // 1 hour default
+  const latestSync = await this.findOne(
+    { userId },
+    { lastStravaSync: 1 },
+    { sort: { lastStravaSync: -1 } }
+  );
+
+  if (!latestSync) return true;
+
+  const timeSinceLastSync = Date.now() - latestSync.lastStravaSync.getTime();
+  return timeSinceLastSync > refreshInterval;
+};
 
 const Activity = mongoose.model('Activity', activitySchema);
 
