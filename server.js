@@ -5,11 +5,31 @@ import { fileURLToPath } from 'url';
 import axios from 'axios';
 import cors from 'cors';
 import mongoose from 'mongoose';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import User from './models/User.js';
 import Activity from './models/Activity.js';
 import { mockAthlete, mockActivities } from './mock/strava-data.js';
 
 dotenv.config();
+
+// Rate limiting configuration
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// Strava API specific rate limiter
+const stravaLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 50, // Limit each IP to 50 Strava API requests per windowMs
+  message: 'Too many Strava API requests, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
 // MongoDB Connection
 const connectToMongoDB = async (retries = 5, delay = 5000) => {
@@ -91,13 +111,39 @@ console.log('Environment configuration:', {
 const USE_MOCK_DATA = process.env.NODE_ENV === 'development' || process.env.USE_MOCK_DATA === 'true';
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Parse JSON bodies
-app.use(express.json());
+// Security middleware
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      connectSrc: ["'self'", 'https://www.strava.com', 'https://*.strava.com'],
+      frameSrc: ["'self'", 'https://www.strava.com'],
+      fontSrc: ["'self'", 'https:', 'data:'],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      formAction: ["'self'"],
+      upgradeInsecureRequests: []
+    }
+  },
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 
-// CORS configuration
+// Apply rate limiting
+app.use(limiter);
+
+// Apply Strava-specific rate limiting to relevant endpoints
+app.use('/api/strava', stravaLimiter);
+
+// Parse JSON with size limits
+app.use(express.json({ limit: '10kb' }));
+
+// CORS configuration with more secure options
 const corsOptions = {
   origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl, etc.)
     if (!origin) return callback(null, true);
     
     const allowedOrigins = [
@@ -108,7 +154,7 @@ const corsOptions = {
       FRONTEND_URL
     ];
     
-    if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -116,7 +162,8 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization']
+  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'],
+  maxAge: 86400 // 24 hours
 };
 
 app.use(cors(corsOptions));
