@@ -258,7 +258,6 @@ const Coach = () => {
   // Add training load line graph data
   const trainingLoadLineData = {
     labels: activities
-      .slice(-28)  // Get last 28 days
       .map(activity => new Date(activity.start_date_local).toLocaleDateString('en-US', { 
         month: 'short', 
         day: 'numeric',
@@ -267,7 +266,7 @@ const Coach = () => {
     datasets: [
       {
         label: 'Acute Load (7-day)',
-        data: activities.slice(-28).map((_, index, array) => {
+        data: activities.map((_, index, array) => {
           const last7Days = array.slice(Math.max(index - 6, 0), index + 1);
           return calculateTrainingLoad(last7Days).acute;
         }),
@@ -279,7 +278,7 @@ const Coach = () => {
       },
       {
         label: 'Chronic Load (28-day)',
-        data: activities.slice(-28).map((_, index, array) => {
+        data: activities.map((_, index, array) => {
           const last28Days = array.slice(Math.max(index - 27, 0), index + 1);
           return calculateTrainingLoad(last28Days).chronic;
         }),
@@ -291,7 +290,7 @@ const Coach = () => {
       },
       {
         label: 'A:C Ratio',
-        data: activities.slice(-28).map((_, index, array) => {
+        data: activities.map((_, index, array) => {
           const last28Days = array.slice(Math.max(index - 27, 0), index + 1);
           const last7Days = array.slice(Math.max(index - 6, 0), index + 1);
           const acute = calculateTrainingLoad(last7Days).acute;
@@ -321,6 +320,10 @@ const Coach = () => {
         },
         ticks: {
           color: 'rgb(209, 213, 219)',
+          maxRotation: 45,
+          minRotation: 45,
+          autoSkip: true,
+          maxTicksLimit: 20, // Limit the number of x-axis labels for readability
         }
       },
       y: {

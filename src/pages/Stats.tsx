@@ -47,10 +47,12 @@ const Stats = () => {
         break;
     }
 
-    return activities.filter(activity => 
-      new Date(activity.start_date_local) >= startDate &&
-      new Date(activity.start_date_local) <= now
-    );
+    return activities
+      .filter(activity => 
+        new Date(activity.start_date_local) >= startDate &&
+        new Date(activity.start_date_local) <= now
+      )
+      .sort((a, b) => new Date(a.start_date_local).getTime() - new Date(b.start_date_local).getTime());
   };
 
   const generateDateRange = (startDate: Date, endDate: Date): Date[] => {

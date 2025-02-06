@@ -95,13 +95,18 @@ export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         dataCount: response.data.length
       });
 
+      // Sort activities by date (most recent first)
+      const sortedActivities = response.data.sort((a, b) => 
+        new Date(b.start_date_local).getTime() - new Date(a.start_date_local).getTime()
+      );
+
       // Update state and cache
-      setActivities(response.data);
+      setActivities(sortedActivities);
       localStorage.setItem(CACHE_KEY, JSON.stringify({
-        data: response.data,
+        data: sortedActivities,
         timestamp: Date.now()
       }));
-      console.log('[ActivitiesContext] Cache updated');
+      console.log('[ActivitiesContext] Cache updated with', sortedActivities.length, 'activities');
 
     } catch (error) {
       console.error('[ActivitiesContext] Error:', error);

@@ -72,8 +72,15 @@ const ActivityChart = ({ activities }: { activities: Activity[] }) => {
     activityMap.set(date.toISOString().split('T')[0], 0);
   });
 
-  // Fill in actual activity distances
-  activities.forEach(activity => {
+  // Fill in actual activity distances for the last 30 days
+  const last30DaysActivities = activities.filter(activity => {
+    const activityDate = new Date(activity.start_date_local);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    return activityDate >= thirtyDaysAgo;
+  });
+
+  last30DaysActivities.forEach(activity => {
     const date = new Date(activity.start_date_local);
     const dateStr = date.toISOString().split('T')[0];
     if (activityMap.has(dateStr)) {
@@ -210,7 +217,8 @@ const Dashboard = () => {
   // Only calculate stats when activities change
   useEffect(() => {
     if (activities.length > 0) {
-      const newStats = activities.reduce((acc: Stats, activity: Activity) => ({
+      // Calculate total stats from all activities
+      const totalStats = activities.reduce((acc: Stats, activity: Activity) => ({
         totalDistance: acc.totalDistance + activity.distance,
         totalTime: acc.totalTime + activity.moving_time,
         totalElevation: acc.totalElevation + activity.total_elevation_gain,
@@ -222,7 +230,7 @@ const Dashboard = () => {
         activitiesCount: 0
       });
       
-      setStats(newStats);
+      setStats(totalStats);
     }
   }, [activities]);
 

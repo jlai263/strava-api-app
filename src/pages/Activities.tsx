@@ -78,10 +78,12 @@ const ActivityCard = ({ activity }: { activity: Activity }) => {
 };
 
 const Activities = () => {
-  const { activities, loading, error } = useActivities();
+  const { activities, isLoading, error } = useActivities();
   const [filteredActivities, setFilteredActivities] = useState<Activity[]>([]);
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
 
   // Filter activities when filter or search changes
   useEffect(() => {
@@ -100,9 +102,17 @@ const Activities = () => {
     }
 
     setFilteredActivities(filtered);
+    setPage(1); // Reset to first page when filters change
   }, [filter, searchQuery, activities]);
 
-  if (loading) {
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredActivities.length / ITEMS_PER_PAGE);
+  const paginatedActivities = filteredActivities.slice(
+    (page - 1) * ITEMS_PER_PAGE,
+    page * ITEMS_PER_PAGE
+  );
+
+  if (isLoading) {
     return (
       <div className="page-container flex items-center justify-center">
         <div className="text-center">
@@ -152,16 +162,43 @@ const Activities = () => {
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full px-4 py-2 rounded-lg glass text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
         />
+
+        <div className="text-sm text-gray-400">
+          Showing {filteredActivities.length} activities
+        </div>
       </div>
 
       {/* Activities List */}
       <motion.div layout className="space-y-4">
         <AnimatePresence>
-          {filteredActivities.map(activity => (
+          {paginatedActivities.map(activity => (
             <ActivityCard key={activity.stravaId} activity={activity} />
           ))}
         </AnimatePresence>
       </motion.div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="mt-6 flex justify-center space-x-2">
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="px-4 py-2 rounded-lg glass text-gray-300 hover:bg-white/10 disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <span className="px-4 py-2 text-gray-300">
+            Page {page} of {totalPages}
+          </span>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            className="px-4 py-2 rounded-lg glass text-gray-300 hover:bg-white/10 disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 }
