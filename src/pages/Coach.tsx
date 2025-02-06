@@ -257,7 +257,8 @@ const Coach = () => {
 
   // Add training load line graph data
   const trainingLoadLineData = {
-    labels: activities
+    labels: [...activities]
+      .sort((a, b) => new Date(a.start_date_local).getTime() - new Date(b.start_date_local).getTime())
       .map(activity => new Date(activity.start_date_local).toLocaleDateString('en-US', { 
         month: 'short', 
         day: 'numeric',
@@ -266,10 +267,17 @@ const Coach = () => {
     datasets: [
       {
         label: 'Acute Load (7-day)',
-        data: activities.map((_, index, array) => {
-          const last7Days = array.slice(Math.max(index - 6, 0), index + 1);
-          return calculateTrainingLoad(last7Days).acute;
-        }),
+        data: [...activities]
+          .sort((a, b) => new Date(a.start_date_local).getTime() - new Date(b.start_date_local).getTime())
+          .map((_, index, array) => {
+            const currentDate = new Date(array[index].start_date_local);
+            const sevenDaysAgo = new Date(currentDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+            const activitiesInRange = array.filter(activity => {
+              const activityDate = new Date(activity.start_date_local);
+              return activityDate >= sevenDaysAgo && activityDate <= currentDate;
+            });
+            return calculateTrainingLoad(activitiesInRange).acute;
+          }),
         borderColor: '#f97316',
         backgroundColor: 'rgba(249, 115, 22, 0.1)',
         fill: false,
@@ -278,10 +286,17 @@ const Coach = () => {
       },
       {
         label: 'Chronic Load (28-day)',
-        data: activities.map((_, index, array) => {
-          const last28Days = array.slice(Math.max(index - 27, 0), index + 1);
-          return calculateTrainingLoad(last28Days).chronic;
-        }),
+        data: [...activities]
+          .sort((a, b) => new Date(a.start_date_local).getTime() - new Date(b.start_date_local).getTime())
+          .map((_, index, array) => {
+            const currentDate = new Date(array[index].start_date_local);
+            const twentyEightDaysAgo = new Date(currentDate.getTime() - 28 * 24 * 60 * 60 * 1000);
+            const activitiesInRange = array.filter(activity => {
+              const activityDate = new Date(activity.start_date_local);
+              return activityDate >= twentyEightDaysAgo && activityDate <= currentDate;
+            });
+            return calculateTrainingLoad(activitiesInRange).chronic;
+          }),
         borderColor: '#10b981',
         backgroundColor: 'rgba(16, 185, 129, 0.1)',
         fill: false,
@@ -290,13 +305,27 @@ const Coach = () => {
       },
       {
         label: 'A:C Ratio',
-        data: activities.map((_, index, array) => {
-          const last28Days = array.slice(Math.max(index - 27, 0), index + 1);
-          const last7Days = array.slice(Math.max(index - 6, 0), index + 1);
-          const acute = calculateTrainingLoad(last7Days).acute;
-          const chronic = calculateTrainingLoad(last28Days).chronic;
-          return chronic > 0 ? Number((acute / chronic).toFixed(2)) : 0;
-        }),
+        data: [...activities]
+          .sort((a, b) => new Date(a.start_date_local).getTime() - new Date(b.start_date_local).getTime())
+          .map((_, index, array) => {
+            const currentDate = new Date(array[index].start_date_local);
+            const sevenDaysAgo = new Date(currentDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+            const twentyEightDaysAgo = new Date(currentDate.getTime() - 28 * 24 * 60 * 60 * 1000);
+            
+            const acuteActivities = array.filter(activity => {
+              const activityDate = new Date(activity.start_date_local);
+              return activityDate >= sevenDaysAgo && activityDate <= currentDate;
+            });
+            
+            const chronicActivities = array.filter(activity => {
+              const activityDate = new Date(activity.start_date_local);
+              return activityDate >= twentyEightDaysAgo && activityDate <= currentDate;
+            });
+            
+            const acute = calculateTrainingLoad(acuteActivities).acute;
+            const chronic = calculateTrainingLoad(chronicActivities).chronic;
+            return chronic > 0 ? Number((acute / chronic).toFixed(2)) : 0;
+          }),
         borderColor: '#6366f1',
         backgroundColor: 'rgba(99, 102, 241, 0.1)',
         fill: false,
@@ -323,7 +352,7 @@ const Coach = () => {
           maxRotation: 45,
           minRotation: 45,
           autoSkip: true,
-          maxTicksLimit: 20, // Limit the number of x-axis labels for readability
+          maxTicksLimit: 20,
         }
       },
       y: {
@@ -340,7 +369,8 @@ const Coach = () => {
           display: true,
           text: 'Training Load',
           color: 'rgb(209, 213, 219)',
-        }
+        },
+        min: 0,
       },
       y1: {
         type: 'linear' as const,
@@ -357,8 +387,8 @@ const Coach = () => {
           text: 'A:C Ratio',
           color: 'rgb(209, 213, 219)',
         },
-        suggestedMin: 0.5,
-        suggestedMax: 1.5,
+        min: 0,
+        suggestedMax: 2.0,
       },
     },
     plugins: {
@@ -384,7 +414,7 @@ const Coach = () => {
       legend: {
         position: 'right' as const,
         labels: {
-          color: 'rgb(255, 255, 255)',  // Updated to white
+          color: 'rgb(255, 255, 255)',
           padding: 20,
           font: {
             size: 12
@@ -411,6 +441,9 @@ const Coach = () => {
         }
       },
       tooltip: {
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        titleColor: 'rgb(255, 255, 255)',
+        bodyColor: 'rgb(255, 255, 255)',
         callbacks: {
           label: (context) => {
             const label = context.label?.split(' - ')[0] || '';

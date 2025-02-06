@@ -87,7 +87,8 @@ const Activities = () => {
 
   // Filter activities when filter or search changes
   useEffect(() => {
-    let filtered = activities;
+    console.log('Total activities received:', activities.length);
+    let filtered = [...activities]; // Create a new array to avoid mutation
 
     // Apply type filter
     if (filter !== 'all') {
@@ -101,8 +102,12 @@ const Activities = () => {
       );
     }
 
+    // Sort by date (most recent first)
+    filtered.sort((a, b) => new Date(b.start_date_local).getTime() - new Date(a.start_date_local).getTime());
+
     setFilteredActivities(filtered);
     setPage(1); // Reset to first page when filters change
+    console.log('Filtered activities:', filtered.length);
   }, [filter, searchQuery, activities]);
 
   // Calculate pagination

@@ -127,7 +127,7 @@ export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Initial fetch
   useEffect(() => {
     console.log('[ActivitiesContext] Provider mounted');
-    fetchActivities();
+    fetchActivities(true); // Force refresh on mount
     return () => {
       console.log('[ActivitiesContext] Provider unmounted');
     };

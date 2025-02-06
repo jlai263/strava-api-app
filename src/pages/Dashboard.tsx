@@ -176,7 +176,7 @@ const RecentActivities = ({ activities }: { activities: Activity[] }) => {
       <h3 className="text-xl font-semibold text-white mb-4">Recent Activities</h3>
       {lastFiveActivities.map(activity => (
         <motion.div
-          key={activity.id}
+          key={activity.id || activity.stravaId}
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           className="glass-card p-4"
@@ -214,10 +214,9 @@ const Dashboard = () => {
     activitiesCount: 0
   });
 
-  // Only calculate stats when activities change
+  // Calculate total stats from all activities
   useEffect(() => {
     if (activities.length > 0) {
-      // Calculate total stats from all activities
       const totalStats = activities.reduce((acc: Stats, activity: Activity) => ({
         totalDistance: acc.totalDistance + activity.distance,
         totalTime: acc.totalTime + activity.moving_time,
