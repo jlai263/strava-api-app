@@ -157,6 +157,13 @@ const activitiesCache = {
 apiRouter.get('/auth/strava', (req, res) => {
   try {
     console.log('Initiating Strava auth...');
+    console.log('Environment variables:', {
+      NODE_ENV: process.env.NODE_ENV,
+      RAILWAY_PUBLIC_DOMAIN: process.env.RAILWAY_PUBLIC_DOMAIN,
+      STRAVA_CLIENT_ID: process.env.STRAVA_CLIENT_ID ? '(set)' : '(not set)',
+      STRAVA_REDIRECT_URI: process.env.STRAVA_REDIRECT_URI
+    });
+
     const clientId = process.env.STRAVA_CLIENT_ID;
     const redirectUri = process.env.NODE_ENV === 'production'
       ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/api/strava/callback`
@@ -172,10 +179,16 @@ apiRouter.get('/auth/strava', (req, res) => {
     const authUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${scope}&approval_prompt=force`;
     
     console.log('Generated auth URL:', authUrl);
+    console.log('Response headers:', res.getHeaders());
     res.json({ authUrl });
   } catch (error) {
     console.error('Error in /api/auth/strava:', error);
-    res.status(500).json({ error: 'Failed to initiate Strava authentication' });
+    console.error('Stack trace:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to initiate Strava authentication',
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 

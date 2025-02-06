@@ -242,21 +242,28 @@ function App() {
       setLoading(true);
       setError(null);
       console.log('Initiating Strava connection...');
+      console.log('Environment:', {
+        NODE_ENV: process.env.NODE_ENV,
+        VITE_API_URL: import.meta.env.VITE_API_URL,
+        VITE_STRAVA_CLIENT_ID: import.meta.env.VITE_STRAVA_CLIENT_ID
+      });
       
       const response = await fetch('/api/auth/strava');
+      console.log('Raw response:', response);
+      
       if (!response.ok) {
-        throw new Error(`Failed to connect to Strava: ${response.statusText}`);
+        throw new Error(`Failed to connect to Strava: ${response.statusText} (${response.status})`);
       }
       
       const data = await response.json();
-      console.log('Received auth URL response');
+      console.log('Auth response data:', data);
       
       if (data.error) {
         throw new Error(data.error);
       }
       
       if (data.authUrl) {
-        console.log('Redirecting to Strava auth URL');
+        console.log('Redirecting to Strava auth URL:', data.authUrl);
         window.location.href = data.authUrl;
       } else {
         throw new Error('Invalid response from server: missing authUrl');
@@ -264,6 +271,7 @@ function App() {
     } catch (error) {
       console.error('Strava connection error:', error);
       setError(error instanceof Error ? error.message : 'Failed to connect with Strava');
+    } finally {
       setLoading(false);
     }
   };
