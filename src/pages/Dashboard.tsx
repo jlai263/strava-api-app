@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Line } from 'react-chartjs-2';
-import { useActivities, Activity } from '../context/ActivitiesContext';
+import { useActivities } from '../context/ActivitiesContext';
+import type { Activity } from '../context/ActivitiesContext';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -13,6 +14,10 @@ import {
   Legend,
   Filler
 } from 'chart.js';
+
+interface ChartContext {
+  raw: number;
+}
 
 ChartJS.register(
   CategoryScale,
@@ -129,7 +134,7 @@ const ActivityChart = ({ activities }: { activities: Activity[] }) => {
       },
       tooltip: {
         callbacks: {
-          label: (context) => {
+          label: (context: ChartContext) => {
             const value = context.raw as number;
             return `Distance: ${value.toFixed(1)} km`;
           }

@@ -1,30 +1,8 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import axios from 'axios';
+import type { IActivity } from '../models/Activity';
 
-interface Activity {
-  stravaId: number;
-  userId: number;
-  type: string;
-  name: string;
-  distance: number;
-  moving_time: number;
-  elapsed_time: number;
-  total_elevation_gain: number;
-  start_date: string;
-  start_date_local: string;
-  timezone: string;
-  average_speed: number;
-  max_speed: number;
-  average_heartrate?: number;
-  max_heartrate?: number;
-  elev_high?: number;
-  elev_low?: number;
-  description?: string;
-  calories?: number;
-  map?: {
-    polyline?: string;
-  };
-}
+export type Activity = IActivity;
 
 interface DateRange {
   earliest: string | null;

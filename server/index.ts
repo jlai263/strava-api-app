@@ -323,8 +323,7 @@ const getActivitiesHandler: RequestHandler = async (req, res, next) => {
   try {
     const user = await getUserFromSession(req);
     if (!user) {
-      res.status(401).json({ error: 'Not authenticated' });
-      return;
+      return res.status(401).json({ error: 'Not authenticated' });
     }
 
     const forceRefresh = req.query.forceRefresh === 'true';
@@ -364,12 +363,12 @@ const getActivitiesHandler: RequestHandler = async (req, res, next) => {
       lastSync: new Date().toISOString()
     };
 
-    res.json({
+    return res.json({
       activities,
       metadata
     });
   } catch (error: any) {
-    next(error);
+    return next(error);
   }
 };
 

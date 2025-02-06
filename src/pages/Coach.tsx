@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useActivities } from '../context/ActivitiesContext';
+import type { Activity } from '../context/ActivitiesContext';
 import { calculateTrainingLoad, calculateZoneDistribution } from '../utils/trainingMetrics';
 import { Line, Doughnut, Bar } from 'react-chartjs-2';
 import {
@@ -14,7 +15,9 @@ import {
   Tooltip,
   Legend,
   Filler,
-  ArcElement
+  ArcElement,
+  TooltipItem,
+  ChartType
 } from 'chart.js';
 
 ChartJS.register(
@@ -29,6 +32,42 @@ ChartJS.register(
   Filler,
   ArcElement
 );
+
+const generateLabels = (chart: ChartJS<ChartType, unknown[], unknown>) => {
+  const data = chart.data;
+  if (data.labels?.length && data.datasets.length) {
+    return data.labels.map((label, i) => {
+      const backgroundColor = Array.isArray(data.datasets[0].backgroundColor) 
+        ? data.datasets[0].backgroundColor[i]
+        : data.datasets[0].backgroundColor;
+      return {
+        text: `${label} (${Math.round(data.datasets[0].data[i] as number)}%)`,
+        fillStyle: backgroundColor,
+        hidden: false,
+        lineCap: undefined,
+        lineDash: undefined,
+        lineDashOffset: undefined,
+        lineJoin: undefined,
+        lineWidth: 0,
+        strokeStyle: undefined,
+        pointStyle: undefined,
+        rotation: undefined,
+      };
+    });
+  }
+  return [];
+};
+
+const tooltipLabelCallback = (tooltipItem: TooltipItem<ChartType>) => {
+  const label = tooltipItem.label?.split(' - ')[0] || '';
+  const value = tooltipItem.raw as number;
+  return `${label}: ${Math.round(value)}%`;
+};
+
+interface ChartContext {
+  raw: number;
+  label?: string;
+}
 
 const Coach = () => {
   const { activities, isLoading, error } = useActivities();
@@ -222,34 +261,12 @@ const Coach = () => {
           font: {
             size: 12
           },
-          generateLabels: (chart) => {
-            const data = chart.data;
-            if (data.labels.length && data.datasets.length) {
-              return data.labels.map((label, i) => ({
-                text: `${label} (${Math.round(data.datasets[0].data[i])}%)`,
-                fillStyle: data.datasets[0].backgroundColor[i],
-                hidden: false,
-                lineCap: undefined,
-                lineDash: undefined,
-                lineDashOffset: undefined,
-                lineJoin: undefined,
-                lineWidth: 0,
-                strokeStyle: undefined,
-                pointStyle: undefined,
-                rotation: undefined,
-              }));
-            }
-            return [];
-          }
+          generateLabels: generateLabels
         }
       },
       tooltip: {
         callbacks: {
-          label: (context) => {
-            const label = context.label?.split(' - ')[0] || '';
-            const value = context.raw || 0;
-            return `${label}: ${Math.round(value)}%`;
-          }
+          label: tooltipLabelCallback
         }
       }
     }
@@ -419,25 +436,7 @@ const Coach = () => {
           font: {
             size: 12
           },
-          generateLabels: (chart) => {
-            const data = chart.data;
-            if (data.labels.length && data.datasets.length) {
-              return data.labels.map((label, i) => ({
-                text: `${label} (${Math.round(data.datasets[0].data[i])}%)`,
-                fillStyle: data.datasets[0].backgroundColor[i],
-                hidden: false,
-                lineCap: undefined,
-                lineDash: undefined,
-                lineDashOffset: undefined,
-                lineJoin: undefined,
-                lineWidth: 0,
-                strokeStyle: undefined,
-                pointStyle: undefined,
-                rotation: undefined,
-              }));
-            }
-            return [];
-          }
+          generateLabels: generateLabels
         }
       },
       tooltip: {
@@ -445,11 +444,33 @@ const Coach = () => {
         titleColor: 'rgb(255, 255, 255)',
         bodyColor: 'rgb(255, 255, 255)',
         callbacks: {
-          label: (context) => {
-            const label = context.label?.split(' - ')[0] || '';
-            const value = context.raw || 0;
-            return `${label}: ${Math.round(value)}%`;
-          }
+          label: tooltipLabelCallback
+        }
+      }
+    }
+  };
+
+  const zoneDistributionOptions = {
+    responsive: true,
+    plugins: {
+      legend: {
+        position: 'right' as const,
+        labels: {
+          color: 'rgb(255, 255, 255)',
+          generateLabels: generateLabels
+        }
+      },
+      title: {
+        display: true,
+        text: 'Zone Distribution',
+        color: 'rgb(255, 255, 255)',
+        font: {
+          size: 16
+        }
+      },
+      tooltip: {
+        callbacks: {
+          label: tooltipLabelCallback
         }
       }
     }

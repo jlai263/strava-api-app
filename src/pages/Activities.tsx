@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useActivities, Activity } from '../context/ActivitiesContext';
+import { useActivities } from '../context/ActivitiesContext';
+import type { Activity } from '../context/ActivitiesContext';
 
-const ActivityCard = ({ activity }: { activity: Activity }) => {
+interface ActivityCardProps {
+  activity: Activity;
+}
+
+const ActivityCard = ({ activity }: ActivityCardProps) => {
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-US', {

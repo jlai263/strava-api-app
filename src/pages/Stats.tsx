@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useActivities } from '../context/ActivitiesContext';
+import type { Activity } from '../context/ActivitiesContext';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -13,7 +15,6 @@ import {
   Filler
 } from 'chart.js';
 import { Line, Bar } from 'react-chartjs-2';
-import { useActivities, Activity } from '../context/ActivitiesContext';
 
 ChartJS.register(
   CategoryScale,
