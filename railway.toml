@@ -3,7 +3,7 @@ builder = "nixpacks"
 buildCommand = "npm install --production=false && npm run build"
 
 [deploy]
-startCommand = "npm start"
+startCommand = "node server.js"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"
@@ -13,7 +13,6 @@ healthcheckProtocol = "https"
 
 [deploy.envs]
 NODE_ENV = "production"
-RAILWAY_DOCKERFILE_PATH = "Dockerfile"
 PORT = "8080"
 RAILWAY_ENVIRONMENT = "production"
 RAILWAY_PUBLIC_DOMAIN = "strava-api-app-production.up.railway.app"

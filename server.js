@@ -87,91 +87,12 @@ console.log('Environment configuration:', {
   STRAVA_REDIRECT_URI: process.env.STRAVA_REDIRECT_URI || '(not set)'
 });
 
-// Parse JSON bodies
-app.use(express.json());
-
-// Health check endpoint - placing it before other middleware
-app.get('/api/health', async (req, res) => {
-  try {
-    // Check MongoDB connection
-    const isMongoConnected = mongoose.connection.readyState === 1;
-    console.log('MongoDB connection state:', mongoose.connection.readyState);
-
-    // Check Strava API configuration
-    const stravaConfigured = {
-      clientId: !!process.env.STRAVA_CLIENT_ID,
-      clientSecret: !!process.env.STRAVA_CLIENT_SECRET,
-      redirectUri: !!process.env.STRAVA_REDIRECT_URI
-    };
-
-    // Check environment configuration
-    const envConfigured = {
-      nodeEnv: process.env.NODE_ENV,
-      port: process.env.PORT,
-      mongoDbUri: !!process.env.MONGODB_URI
-    };
-
-    // In production, we'll consider the app healthy if Strava is configured,
-    // even if MongoDB is still connecting
-    const status = (isProduction && stravaConfigured.clientId && stravaConfigured.clientSecret && stravaConfigured.redirectUri) || 
-                  (isMongoConnected && 
-                   Object.values(stravaConfigured).every(Boolean) && 
-                   Object.values(envConfigured).every(Boolean))
-                  ? 'healthy' 
-                  : 'unhealthy';
-
-    const response = {
-      status,
-      timestamp: new Date().toISOString(),
-      services: {
-        mongodb: isMongoConnected ? 'connected' : 'connecting',
-        strava: stravaConfigured,
-      },
-      environment: envConfigured,
-      headers: {
-        host: req.headers.host,
-        origin: req.headers.origin,
-      }
-    };
-
-    console.log('Health check response:', response);
-
-    // In production, always return 200 if Strava is configured
-    const statusCode = isProduction ? 200 : (status === 'healthy' ? 200 : 503);
-    res.status(statusCode).json(response);
-  } catch (error) {
-    console.error('Health check failed:', error);
-    // In production, return 200 to prevent Railway from restarting the service
-    res.status(isProduction ? 200 : 503).json({
-      status: 'error',
-      error: error.message
-    });
-  }
-});
-
 // Environment check
 const USE_MOCK_DATA = process.env.NODE_ENV === 'development' || process.env.USE_MOCK_DATA === 'true';
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Serve static files in production
-if (process.env.NODE_ENV === 'production') {
-  // Serve static files from the dist directory
-  app.use(express.static(path.join(__dirname, 'dist')));
-  
-  // Handle client-side routing by serving index.html for all non-API routes
-  app.get('*', (req, res) => {
-    if (!req.path.startsWith('/api')) {
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-    }
-  });
-} else {
-  // In development, redirect non-API requests to the Vite dev server
-  app.get('*', (req, res) => {
-    if (!req.path.startsWith('/api')) {
-      res.redirect(`http://localhost:${VITE_DEV_SERVER_PORT}${req.path}`);
-    }
-  });
-}
+// Parse JSON bodies
+app.use(express.json());
 
 // CORS configuration
 const corsOptions = {
@@ -199,6 +120,42 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// API Routes
+const apiRouter = express.Router();
+
+// Mount API routes
+app.use('/api', apiRouter);
+
+// Log all API requests
+apiRouter.use((req, res, next) => {
+  console.log(`${req.method} ${req.url}`);
+  next();
+});
+
+// Serve static files in production
+if (isProduction) {
+  console.log('Setting up production static file serving...');
+  // Serve static files from the dist directory
+  app.use(express.static(path.join(__dirname, 'dist')));
+  
+  // Handle client-side routing by serving index.html for all non-API routes
+  app.get('/*', (req, res, next) => {
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
+    console.log('Serving index.html for path:', req.path);
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  });
+} else {
+  // In development, redirect non-API requests to the Vite dev server
+  app.get('/*', (req, res, next) => {
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
+    res.redirect(`http://localhost:${VITE_DEV_SERVER_PORT}${req.path}`);
+  });
+}
 
 // Security middleware for production
 if (isProduction) {
@@ -230,18 +187,6 @@ if (isProduction) {
     next();
   });
 }
-
-// API Routes
-const apiRouter = express.Router();
-
-// Mount API routes
-app.use('/api', apiRouter);
-
-// Log all API requests
-apiRouter.use((req, res, next) => {
-  console.log(`${req.method} ${req.url}`);
-  next();
-});
 
 // Cache for Strava activities
 const activitiesCache = {
