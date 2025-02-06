@@ -78,12 +78,21 @@ const ActivityCard = ({ activity }: { activity: Activity }) => {
 };
 
 const Activities = () => {
-  const { activities, isLoading, error } = useActivities();
+  const { activities, isLoading, error, refreshActivities } = useActivities();
   const [filteredActivities, setFilteredActivities] = useState<Activity[]>([]);
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const ITEMS_PER_PAGE = 20;
+
+  // Add force sync function
+  const handleForceSync = async () => {
+    // Clear cache
+    localStorage.removeItem('strava_activities_cache');
+    localStorage.removeItem('strava_activities_metadata');
+    // Force refresh
+    await refreshActivities();
+  };
 
   // Filter activities when filter or search changes
   useEffect(() => {
@@ -142,22 +151,36 @@ const Activities = () => {
     <div className="page-container">
       {/* Filters */}
       <div className="flex flex-col space-y-4 mb-6 sm:mb-8">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {['all', 'run', 'ride', 'swim'].map(type => (
-            <motion.button
-              key={type}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setFilter(type)}
-              className={`px-3 py-2 sm:px-4 sm:py-2 rounded-lg font-medium text-sm sm:text-base ${
-                filter === type
-                  ? 'bg-gradient-to-r from-orange-500 to-pink-500 text-white'
-                  : 'glass text-gray-300 hover:bg-white/10'
-              }`}
-            >
-              {type.charAt(0).toUpperCase() + type.slice(1)}
-            </motion.button>
-          ))}
+        <div className="flex justify-between items-center">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {['all', 'run', 'ride', 'swim'].map(type => (
+              <motion.button
+                key={type}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setFilter(type)}
+                className={`px-3 py-2 sm:px-4 sm:py-2 rounded-lg font-medium text-sm sm:text-base ${
+                  filter === type
+                    ? 'bg-gradient-to-r from-orange-500 to-pink-500 text-white'
+                    : 'glass text-gray-300 hover:bg-white/10'
+                }`}
+              >
+                {type.charAt(0).toUpperCase() + type.slice(1)}
+              </motion.button>
+            ))}
+          </div>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleForceSync}
+            disabled={isLoading}
+            className="px-4 py-2 rounded-lg glass text-gray-300 hover:bg-white/10 disabled:opacity-50 flex items-center space-x-2"
+          >
+            <span>{isLoading ? 'Syncing...' : 'Force Sync'}</span>
+            {isLoading && (
+              <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-orange-500"></div>
+            )}
+          </motion.button>
         </div>
         
         <input
