@@ -5,7 +5,11 @@
     "moduleResolution": "node",
     "outDir": "./dist/server",
     "noEmit": false,
-    "jsx": "preserve"
+    "jsx": "preserve",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "types": ["node", "express", "express-session"]
   },
   "include": [
     "server/**/*"

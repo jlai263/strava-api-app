@@ -5,17 +5,15 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 import { MongoClient } from 'mongodb';
 import Activity from '../src/models/Activity';
+import { ParamsDictionary } from 'express-serve-static-core';
+import { ParsedQs } from 'qs';
 
 dotenv.config();
 
-// Extend Express Request type
-declare global {
-  namespace Express {
-    interface Request {
-      user?: {
-        id: string;
-      };
-    }
+// Extend Express Request type to include session
+declare module 'express-session' {
+  interface SessionData {
+    userId: string;
   }
 }
 
@@ -56,19 +54,20 @@ app.use(session({
 }));
 
 // Auth check middleware
-const requireAuth = (req: any, res: any, next: any) => {
+const requireAuth: RequestHandler = (req: Request, res: Response, next: NextFunction) => {
   if (!req.session.userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
   }
   next();
 };
 
 // Auth routes
-app.get('/api/auth/check', (req: any, res) => {
+app.get('/api/auth/check', (req: Request, res: Response) => {
   res.json({ isAuthenticated: !!req.session.userId });
 });
 
-app.get('/api/auth/callback', async (req: any, res) => {
+app.get('/api/auth/callback', async (req: Request, res: Response) => {
   const { code } = req.query;
 
   try {
@@ -111,20 +110,30 @@ app.get('/api/auth/callback', async (req: any, res) => {
   }
 });
 
-app.get('/api/auth/logout', (req: any, res) => {
-  req.session.destroy();
-  res.json({ success: true });
+app.get('/api/auth/logout', (req: Request, res: Response) => {
+  if (req.session) {
+    req.session.destroy((err: Error | null) => {
+      if (err) {
+        res.status(500).json({ error: 'Failed to logout' });
+        return;
+      }
+      res.json({ success: true });
+    });
+  } else {
+    res.json({ success: true });
+  }
 });
 
 // Activity routes
-app.get('/api/activities', requireAuth, async (req: any, res) => {
+app.get('/api/activities', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.session.userId }
     });
 
     if (!user) {
-      return res.status(401).json({ error: 'User not found' });
+      res.status(401).json({ error: 'User not found' });
+      return;
     }
 
     // Check if token needs refresh
@@ -204,8 +213,7 @@ app.get('/api/activities', requireAuth, async (req: any, res) => {
 
     res.json(activities);
   } catch (error) {
-    console.error('Error fetching activities:', error);
-    res.status(500).json({ error: 'Failed to fetch activities' });
+    next(error);
   }
 });
 
@@ -319,7 +327,12 @@ async function fetchStravaActivities(accessToken: string, after: Date = EPOCH_ST
 }
 
 // GET /api/strava/activities - Get all activities with optional force refresh
-const getActivitiesHandler: RequestHandler = async (req, res, next) => {
+const getActivitiesHandler: RequestHandler<
+  ParamsDictionary,
+  any,
+  any,
+  { forceRefresh?: string; after?: string; before?: string }
+> = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const user = await getUserFromSession(req);
     if (!user) {
@@ -328,8 +341,8 @@ const getActivitiesHandler: RequestHandler = async (req, res, next) => {
     }
 
     const forceRefresh = req.query.forceRefresh === 'true';
-    const after = req.query.after ? new Date(req.query.after as string) : EPOCH_START;
-    const before = req.query.before ? new Date(req.query.before as string) : new Date();
+    const after = req.query.after ? new Date(String(req.query.after)) : EPOCH_START;
+    const before = req.query.before ? new Date(String(req.query.before)) : new Date();
 
     // Check if we need to refresh data
     const needsRefresh = forceRefresh || await Activity.needsRefresh(user.id);
@@ -368,7 +381,7 @@ const getActivitiesHandler: RequestHandler = async (req, res, next) => {
       activities,
       metadata
     });
-  } catch (error: any) {
+  } catch (error) {
     next(error);
   }
 };
@@ -376,10 +389,17 @@ const getActivitiesHandler: RequestHandler = async (req, res, next) => {
 app.get('/api/strava/activities', getActivitiesHandler);
 
 // Error handling middleware
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+const errorHandler = (
+  err: unknown,
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   console.error('Error handling request:', err);
-  res.status(500).json({ error: err.message });
-});
+  res.status(500).json({ error: err instanceof Error ? err.message : 'An unknown error occurred' });
+};
+
+app.use(errorHandler);
 
 // Start server
 app.listen(port, () => {
