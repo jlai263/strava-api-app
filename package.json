@@ -10,7 +10,7 @@
     "dev:backend": "node server.js",
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
     "build": "vite build",
-    "postinstall": "npm install && npm run build",
+    "postinstall": "npm run build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },
