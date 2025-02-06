@@ -1,16 +1,20 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "target": "ESNext",
     "module": "ESNext",
-    "moduleResolution": "node",
+    "moduleResolution": "NodeNext",
     "outDir": "./dist/server",
+    "rootDir": "server",
     "noEmit": false,
-    "jsx": "preserve",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
     "types": ["node", "express", "express-session", "mongoose"],
-    "rootDir": "server"
+    "paths": {
+      "*": ["node_modules/*"]
+    }
   },
   "include": [
     "server/**/*"

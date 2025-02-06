@@ -1,4 +1,5 @@
-import mongoose, { Document, Model, Schema } from 'mongoose';
+import mongoose from 'mongoose';
+import type { Document, Model, Schema } from 'mongoose';
 
 export interface IActivity extends Document {
   stravaId: number;
@@ -37,7 +38,7 @@ interface IActivityModel extends Model<IActivity> {
   bulkUpsertActivities(activities: any[], userId: number): Promise<{ modifiedCount: number; upsertedCount: number }>;
 }
 
-const activitySchema = new Schema<IActivity>({
+const activitySchema = new mongoose.Schema<IActivity>({
   stravaId: {
     type: Number,
     required: true,

@@ -1,12 +1,14 @@
-import express, { Request, Response, NextFunction, RequestHandler } from 'express';
+import express from 'express';
+import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { PrismaClient } from '@prisma/client';
 import session from 'express-session';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { MongoClient } from 'mongodb';
 import Activity from './models/Activity.js';
-import { ParamsDictionary } from 'express-serve-static-core';
-import { ParsedQs } from 'qs';
+import type { ParamsDictionary } from 'express-serve-static-core';
+import type { ParsedQs } from 'qs';
+import cors from 'cors';
 
 dotenv.config();
 
