@@ -308,22 +308,28 @@ apiRouter.get('/strava/activities', async (req, res) => {
             return res.status(401).json({ error: 'No access token provided' });
         }
 
-        // First, try to get the user's ID from their activities in MongoDB
+        // First, try to get the user's ID from Strava
         let userId;
         try {
+            console.log('Fetching user data from Strava...');
             const userResponse = await axios.get('https://www.strava.com/api/v3/athlete', {
                 headers: { 'Authorization': `Bearer ${accessToken}` }
             });
             userId = userResponse.data.id;
+            console.log('Got user ID from Strava:', userId);
         } catch (error) {
-            console.error('Error fetching user data:', error);
-            return res.status(401).json({ error: 'Failed to authenticate with Strava' });
+            console.error('Error fetching user data:', error.response?.data || error);
+            return res.status(401).json({ 
+                error: 'Failed to authenticate with Strava',
+                details: error.response?.data || error.message
+            });
         }
 
         // Check if we have recent activities in MongoDB
         const cacheTimeout = 15 * 60 * 1000; // 15 minutes
+        console.log('Checking MongoDB cache for user:', userId);
         const recentActivities = await Activity.find({
-            userId,
+            userId: userId,
             lastUpdated: { $gt: new Date(Date.now() - cacheTimeout) }
         })
         .sort({ start_date: -1 })
@@ -348,14 +354,31 @@ apiRouter.get('/strava/activities', async (req, res) => {
         const activities = response.data;
         console.log(`Storing ${activities.length} activities in MongoDB`);
 
+        // Transform activities for storage
         const bulkOps = activities.map(activity => ({
             updateOne: {
                 filter: { stravaId: activity.id },
                 update: {
                     $set: {
-                        ...activity,
-                        userId,
                         stravaId: activity.id,
+                        userId: userId,
+                        type: activity.type,
+                        name: activity.name,
+                        distance: activity.distance,
+                        moving_time: activity.moving_time,
+                        elapsed_time: activity.elapsed_time,
+                        total_elevation_gain: activity.total_elevation_gain,
+                        start_date: activity.start_date,
+                        start_date_local: activity.start_date_local,
+                        timezone: activity.timezone,
+                        average_speed: activity.average_speed,
+                        max_speed: activity.max_speed,
+                        average_heartrate: activity.average_heartrate,
+                        max_heartrate: activity.max_heartrate,
+                        elev_high: activity.elev_high,
+                        elev_low: activity.elev_low,
+                        description: activity.description,
+                        calories: activity.calories,
                         lastUpdated: new Date()
                     }
                 },
@@ -363,8 +386,13 @@ apiRouter.get('/strava/activities', async (req, res) => {
             }
         }));
 
-        await Activity.bulkWrite(bulkOps);
-        console.log('Activities stored in MongoDB');
+        try {
+            await Activity.bulkWrite(bulkOps);
+            console.log('Activities successfully stored in MongoDB');
+        } catch (dbError) {
+            console.error('Error storing activities in MongoDB:', dbError);
+            // Even if DB storage fails, continue to return the Strava data
+        }
 
         res.json(activities);
         

@@ -8,8 +8,7 @@ const activitySchema = new mongoose.Schema({
     index: true
   },
   userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    type: Number,
     required: true,
     index: true
   },
