@@ -30,16 +30,42 @@ router.get('/activities', async (req, res) => {
       console.log(`[Strava API] No cached activities found for user ${userId}`);
     }
 
-    // Fetch fresh data from Strava
-    console.log('[Strava API] Fetching activities from Strava...');
-    const stravaResponse = await axios.get('https://www.strava.com/api/v3/athlete/activities', {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
-    console.log(`[Strava API] Received ${stravaResponse.data.length} activities from Strava`);
+    // Fetch all activities from Strava using pagination
+    console.log('[Strava API] Fetching all activities from Strava...');
+    let page = 1;
+    let allActivities = [];
+    let hasMore = true;
+    const PER_PAGE = 100; // Maximum allowed by Strava API
+
+    while (hasMore) {
+      console.log(`[Strava API] Fetching page ${page}...`);
+      const stravaResponse = await axios.get('https://www.strava.com/api/v3/athlete/activities', {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+        params: {
+          per_page: PER_PAGE,
+          page: page
+        }
+      });
+
+      const pageActivities = stravaResponse.data;
+      console.log(`[Strava API] Received ${pageActivities.length} activities on page ${page}`);
+
+      if (pageActivities.length === 0) {
+        hasMore = false;
+      } else {
+        allActivities = [...allActivities, ...pageActivities];
+        page++;
+      }
+
+      // Add a small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    console.log(`[Strava API] Total activities fetched: ${allActivities.length}`);
 
     // Update MongoDB cache
     console.log('[Strava API] Updating MongoDB cache...');
-    const activities = stravaResponse.data.map(activity => ({
+    const activities = allActivities.map(activity => ({
       userId,
       stravaId: activity.id,
       name: activity.name,
@@ -49,12 +75,19 @@ router.get('/activities', async (req, res) => {
       total_elevation_gain: activity.total_elevation_gain,
       type: activity.type,
       start_date: activity.start_date,
+      start_date_local: activity.start_date_local,
+      timezone: activity.timezone,
       average_speed: activity.average_speed,
       max_speed: activity.max_speed,
-      average_watts: activity.average_watts,
-      kilojoules: activity.kilojoules,
       average_heartrate: activity.average_heartrate,
       max_heartrate: activity.max_heartrate,
+      elev_high: activity.elev_high,
+      elev_low: activity.elev_low,
+      description: activity.description,
+      calories: activity.calories,
+      startLatlng: activity.start_latlng,
+      endLatlng: activity.end_latlng,
+      map: activity.map,
       dataSource: 'strava',
       lastStravaSync: new Date()
     }));
@@ -75,7 +108,7 @@ router.get('/activities', async (req, res) => {
       upserted: result.upsertedCount
     });
 
-    // Return the fresh data
+    // Return all activities from MongoDB
     const updatedActivities = await Activity.find({ userId }).sort({ start_date: -1 });
     console.log(`[Strava API] Returning ${updatedActivities.length} activities`);
     res.json(updatedActivities);
