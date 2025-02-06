@@ -8,6 +8,8 @@ import Coach from './pages/Coach';
 import Training from './pages/Training';
 import Goals from './pages/Goals';
 import Navbar from './components/Navbar';
+import { AuthProvider } from './context/AuthContext';
+import { ActivitiesProvider } from './context/ActivitiesContext';
 
 interface Blob {
   x: number;
@@ -93,7 +95,11 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/" replace />;
   }
   
-  return children;
+  return (
+    <ActivitiesProvider>
+      {children}
+    </ActivitiesProvider>
+  );
 };
 
 function App() {
@@ -310,85 +316,87 @@ function App() {
 
   return (
     <Router>
-      <Routes>
-        <Route path="/" element={
-          <LoginPage 
-            handleStravaConnect={handleStravaConnect}
-            loading={loading}
-            error={error}
-            blobPositions={blobPositions}
-            isAnimating={isAnimating}
-            mousePosition={mousePosition}
-            windowSize={windowSize}
+      <AuthProvider>
+        <Routes>
+          <Route path="/" element={
+            <LoginPage 
+              handleStravaConnect={handleStravaConnect}
+              loading={loading}
+              error={error}
+              blobPositions={blobPositions}
+              isAnimating={isAnimating}
+              mousePosition={mousePosition}
+              windowSize={windowSize}
+            />
+          } />
+          <Route 
+            path="/dashboard" 
+            element={
+              <ProtectedRoute>
+                <div>
+                  <Navbar />
+                  <Dashboard />
+                </div>
+              </ProtectedRoute>
+            } 
           />
-        } />
-        <Route 
-          path="/dashboard" 
-          element={
-            <ProtectedRoute>
-              <div>
-                <Navbar />
-                <Dashboard />
-              </div>
-            </ProtectedRoute>
-          } 
-        />
-        <Route 
-          path="/activities" 
-          element={
-            <ProtectedRoute>
-              <div>
-                <Navbar />
-                <Activities />
-              </div>
-            </ProtectedRoute>
-          } 
-        />
-        <Route 
-          path="/stats" 
-          element={
-            <ProtectedRoute>
-              <div>
-                <Navbar />
-                <Stats />
-              </div>
-            </ProtectedRoute>
-          } 
-        />
-        <Route 
-          path="/coach" 
-          element={
-            <ProtectedRoute>
-              <div>
-                <Navbar />
-                <Coach />
-              </div>
-            </ProtectedRoute>
-          } 
-        />
-        <Route 
-          path="/training" 
-          element={
-            <ProtectedRoute>
-              <div>
-                <Navbar />
-                <Training />
-              </div>
-            </ProtectedRoute>
-          } 
-        />
-        <Route 
-          path="/goals" 
-          element={
-            <ProtectedRoute>
-              <div>
-                <Navbar />
-                <Goals />
-              </div>
-            </ProtectedRoute>
-          } 
-        />
-      </Routes>
+          <Route 
+            path="/activities" 
+            element={
+              <ProtectedRoute>
+                <div>
+                  <Navbar />
+                  <Activities />
+                </div>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/stats" 
+            element={
+              <ProtectedRoute>
+                <div>
+                  <Navbar />
+                  <Stats />
+                </div>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/coach" 
+            element={
+              <ProtectedRoute>
+                <div>
+                  <Navbar />
+                  <Coach />
+                </div>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/training" 
+            element={
+              <ProtectedRoute>
+                <div>
+                  <Navbar />
+                  <Training />
+                </div>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/goals" 
+            element={
+              <ProtectedRoute>
+                <div>
+                  <Navbar />
+                  <Goals />
+                </div>
+              </ProtectedRoute>
+            } 
+          />
+        </Routes>
+      </AuthProvider>
     </Router>
   );
 }

@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import axios from 'axios';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from './AuthContext';
 
 export interface Activity {
   id: number;
@@ -26,10 +26,19 @@ export interface Activity {
   lastStravaSync: string;
 }
 
+interface ActivitiesContextType {
+  activities: Activity[];
+  loading: boolean;
+  error: string | null;
+  refreshActivities: () => Promise<void>;
+}
+
+const ActivitiesContext = createContext<ActivitiesContextType | undefined>(undefined);
+
 const CACHE_KEY = 'strava_activities_cache';
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes local cache
 
-export const useActivities = () => {
+export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +63,7 @@ export const useActivities = () => {
           const age = Date.now() - timestamp;
           
           if (age < CACHE_DURATION) {
-            console.log('Using local cache');
+            console.log('Using local cache from ActivitiesContext');
             setActivities(data);
             setLoading(false);
             return;
@@ -63,7 +72,7 @@ export const useActivities = () => {
       }
 
       // Fetch from our server (which handles MongoDB caching)
-      console.log(force ? 'Force refreshing activities' : 'Fetching activities');
+      console.log(force ? 'Force refreshing activities' : 'Fetching activities from ActivitiesContext');
       const response = await axios.get('/api/strava/activities', {
         headers: {
           'Authorization': `Bearer ${accessToken}`
@@ -98,10 +107,22 @@ export const useActivities = () => {
     fetchActivities();
   }, [fetchActivities]);
 
-  return { 
-    activities, 
-    loading, 
-    error,
-    refreshActivities: () => fetchActivities(true) // Force refresh function
-  };
+  return (
+    <ActivitiesContext.Provider value={{
+      activities,
+      loading,
+      error,
+      refreshActivities: () => fetchActivities(true)
+    }}>
+      {children}
+    </ActivitiesContext.Provider>
+  );
+};
+
+export const useActivities = () => {
+  const context = useContext(ActivitiesContext);
+  if (!context) {
+    throw new Error('useActivities must be used within an ActivitiesProvider');
+  }
+  return context;
 }; 
