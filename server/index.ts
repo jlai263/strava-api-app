@@ -1,5 +1,4 @@
-import express from 'express';
-import { Request, Response } from 'express';
+import express, { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import session from 'express-session';
 import axios from 'axios';
@@ -8,10 +7,13 @@ import { MongoClient } from 'mongodb';
 
 dotenv.config();
 
+// Extend Express Request type
 declare global {
   namespace Express {
-    interface User {
-      id: string;
+    interface Request {
+      user?: {
+        id: string;
+      };
     }
   }
 }
@@ -21,8 +23,8 @@ const prisma = new PrismaClient();
 const port = process.env.PORT || 3000;
 
 // Constants for Strava API
-const PER_PAGE = 200; // Maximum allowed by Strava API
-const RATE_LIMIT_DELAY = 500; // 500ms delay between requests to avoid rate limiting
+const PER_PAGE = 100; // Maximum allowed by Strava API
+const RATE_LIMIT_DELAY = 1000; // 1 second delay between requests
 const MAX_RETRIES = 3; // Maximum number of retries for failed requests
 
 // MongoDB connection
@@ -248,9 +250,9 @@ app.get('/api/stats', requireAuth, async (req: any, res) => {
 async function fetchStravaActivities(accessToken: string, after?: number): Promise<any[]> {
   let page = 1;
   let allActivities: any[] = [];
-  let retryCount = 0;
+  let hasMore = true;
 
-  while (true) {
+  while (hasMore) {
     try {
       console.log(`[Strava API] Fetching page ${page} of activities...`);
       
@@ -271,47 +273,49 @@ async function fetchStravaActivities(accessToken: string, after?: number): Promi
       });
 
       const activities = response.data;
+      console.log(`[Strava API] Page ${page} returned ${activities.length} activities`);
       
       if (!activities || activities.length === 0) {
         console.log('[Strava API] No more activities found');
+        hasMore = false;
         break;
       }
 
       allActivities = [...allActivities, ...activities];
-      console.log(`[Strava API] Retrieved ${activities.length} activities (total: ${allActivities.length})`);
+      console.log(`[Strava API] Total activities fetched so far: ${allActivities.length}`);
       
       // If we got less than PER_PAGE activities, we've reached the end
       if (activities.length < PER_PAGE) {
+        console.log('[Strava API] Received less than PER_PAGE activities, ending pagination');
+        hasMore = false;
         break;
       }
 
       page++;
-      retryCount = 0; // Reset retry count on successful request
 
     } catch (error: any) {
       console.error('[Strava API] Error fetching activities:', error.message);
       
       // Handle rate limiting
       if (error.response?.status === 429) {
-        const waitTime = parseInt(error.response.headers['x-ratelimit-reset'] || '15');
+        const waitTime = parseInt(error.response.headers['x-ratelimit-reset'] || '900'); // Default to 15 minutes
         console.log(`[Strava API] Rate limited. Waiting ${waitTime} seconds...`);
         await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
-        continue;
+        continue; // Retry the same page after waiting
       }
 
-      // Handle other errors with retry logic
-      retryCount++;
-      if (retryCount > MAX_RETRIES) {
-        console.error(`[Strava API] Max retries (${MAX_RETRIES}) exceeded. Stopping pagination.`);
+      // For other errors, stop pagination but return what we have so far
+      console.error(`[Strava API] Error on page ${page}:`, error.response?.data || error.message);
+      if (allActivities.length > 0) {
+        console.log(`[Strava API] Returning ${allActivities.length} activities collected before error`);
+        hasMore = false;
         break;
       }
-
-      console.log(`[Strava API] Retry ${retryCount}/${MAX_RETRIES} after error...`);
-      await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY * retryCount));
-      continue;
+      throw error; // Re-throw if we have no activities
     }
   }
 
+  console.log(`[Strava API] Successfully fetched all ${allActivities.length} activities`);
   return allActivities;
 }
 
@@ -351,13 +355,14 @@ async function updateMongoCache(userId: string, activities: any[]): Promise<void
 }
 
 // Update the activities endpoint
-app.get('/api/strava/activities', async (req: Request, res: Response) => {
+app.get('/api/strava/activities', async (req: Request, res: Response): Promise<void> => {
   const accessToken = req.headers.authorization?.split(' ')[1];
   const userId = req.user?.id;
   const fullSync = req.query.fullSync === 'true';
 
   if (!accessToken || !userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
   }
 
   try {
@@ -373,7 +378,6 @@ app.get('/api/strava/activities', async (req: Request, res: Response) => {
 
     let after: number | undefined;
     if (!fullSync && lastActivity.length > 0) {
-      // If not doing a full sync, only get activities after the last one we have
       after = Math.floor(new Date(lastActivity[0].start_date).getTime() / 1000);
       console.log(`[Server] Fetching activities after ${new Date(after * 1000).toISOString()}`);
     }
