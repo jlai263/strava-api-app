@@ -12,11 +12,13 @@ import {
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  TooltipItem
 } from 'chart.js';
 
 interface ChartContext {
-  raw: number;
+  raw: unknown;
+  label?: string;
 }
 
 ChartJS.register(
@@ -134,7 +136,7 @@ const ActivityChart = ({ activities }: { activities: Activity[] }) => {
       },
       tooltip: {
         callbacks: {
-          label: (context: ChartContext) => {
+          label: (context: TooltipItem<"line">) => {
             const value = context.raw as number;
             return `Distance: ${value.toFixed(1)} km`;
           }
