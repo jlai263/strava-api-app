@@ -333,31 +333,50 @@ apiRouter.get('/strava/activities', async (req, res) => {
         if (!needsRefresh) {
             console.log('Using cached data from MongoDB');
             const cachedActivities = await Activity.find({ userId })
-                .sort({ start_date: -1 })
-                .limit(30);
+                .sort({ start_date: -1 });
 
             if (cachedActivities.length > 0) {
                 return res.json(cachedActivities);
             }
         }
 
-        // If we need a refresh or have no cached data, fetch from Strava
-        console.log('Fetching fresh activities from Strava...');
-        const response = await axios.get('https://www.strava.com/api/v3/athlete/activities', {
-            headers: { 'Authorization': `Bearer ${accessToken}` },
-            params: {
-                per_page: 30,
-                page: 1
+        // If we need a refresh or have no cached data, fetch all activities from Strava
+        console.log('Fetching all activities from Strava...');
+        let page = 1;
+        let allActivities = [];
+        let hasMore = true;
+        const PER_PAGE = 100; // Maximum allowed by Strava API
+
+        while (hasMore) {
+            console.log(`Fetching page ${page} of activities...`);
+            const response = await axios.get('https://www.strava.com/api/v3/athlete/activities', {
+                headers: { 'Authorization': `Bearer ${accessToken}` },
+                params: {
+                    per_page: PER_PAGE,
+                    page: page
+                }
+            });
+
+            const activities = response.data;
+            if (activities.length === 0) {
+                hasMore = false;
+            } else {
+                allActivities = [...allActivities, ...activities];
+                page++;
             }
-        });
+
+            // Add a small delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        console.log(`Retrieved ${allActivities.length} total activities`);
 
         // Store activities in MongoDB
-        const activities = response.data;
-        console.log(`Storing ${activities.length} activities in MongoDB`);
+        console.log(`Storing ${allActivities.length} activities in MongoDB`);
 
         // Transform activities for storage
         const now = new Date();
-        const bulkOps = activities.map(activity => ({
+        const bulkOps = allActivities.map(activity => ({
             updateOne: {
                 filter: { stravaId: activity.id },
                 update: {
@@ -398,7 +417,7 @@ apiRouter.get('/strava/activities', async (req, res) => {
             // Even if DB storage fails, continue to return the Strava data
         }
 
-        res.json(activities);
+        res.json(allActivities);
         
     } catch (error) {
         console.error('Error in activities endpoint:', error.response?.data || error.message);
@@ -408,8 +427,7 @@ apiRouter.get('/strava/activities', async (req, res) => {
             try {
                 console.log('Attempting to return cached data after API error');
                 const cachedActivities = await Activity.find({ userId })
-                    .sort({ start_date: -1 })
-                    .limit(30);
+                    .sort({ start_date: -1 });
 
                 if (cachedActivities.length > 0) {
                     return res.json(cachedActivities);

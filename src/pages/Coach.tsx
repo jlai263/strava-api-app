@@ -255,6 +255,124 @@ const Coach = () => {
     }
   };
 
+  // Add training load line graph data
+  const trainingLoadLineData = {
+    labels: activities
+      .slice(-28)  // Get last 28 days
+      .map(activity => new Date(activity.start_date_local).toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric',
+        timeZone: 'UTC'
+      })),
+    datasets: [
+      {
+        label: 'Acute Load (7-day)',
+        data: activities.slice(-28).map((_, index, array) => {
+          const last7Days = array.slice(Math.max(index - 6, 0), index + 1);
+          return calculateTrainingLoad(last7Days).acute;
+        }),
+        borderColor: '#f97316',
+        backgroundColor: 'rgba(249, 115, 22, 0.1)',
+        fill: false,
+        tension: 0.4,
+        yAxisID: 'y',
+      },
+      {
+        label: 'Chronic Load (28-day)',
+        data: activities.slice(-28).map((_, index, array) => {
+          const last28Days = array.slice(Math.max(index - 27, 0), index + 1);
+          return calculateTrainingLoad(last28Days).chronic;
+        }),
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+        fill: false,
+        tension: 0.4,
+        yAxisID: 'y',
+      },
+      {
+        label: 'A:C Ratio',
+        data: activities.slice(-28).map((_, index, array) => {
+          const last28Days = array.slice(Math.max(index - 27, 0), index + 1);
+          const last7Days = array.slice(Math.max(index - 6, 0), index + 1);
+          const acute = calculateTrainingLoad(last7Days).acute;
+          const chronic = calculateTrainingLoad(last28Days).chronic;
+          return chronic > 0 ? Number((acute / chronic).toFixed(2)) : 0;
+        }),
+        borderColor: '#6366f1',
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+        fill: false,
+        tension: 0.4,
+        yAxisID: 'y1',
+      }
+    ]
+  };
+
+  const trainingLoadChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      mode: 'index' as const,
+      intersect: false,
+    },
+    scales: {
+      x: {
+        grid: {
+          color: 'rgba(255, 255, 255, 0.1)',
+        },
+        ticks: {
+          color: 'rgb(209, 213, 219)',
+        }
+      },
+      y: {
+        type: 'linear' as const,
+        display: true,
+        position: 'left' as const,
+        grid: {
+          color: 'rgba(255, 255, 255, 0.1)',
+        },
+        ticks: {
+          color: 'rgb(209, 213, 219)',
+        },
+        title: {
+          display: true,
+          text: 'Training Load',
+          color: 'rgb(209, 213, 219)',
+        }
+      },
+      y1: {
+        type: 'linear' as const,
+        display: true,
+        position: 'right' as const,
+        grid: {
+          drawOnChartArea: false,
+        },
+        ticks: {
+          color: 'rgb(209, 213, 219)',
+        },
+        title: {
+          display: true,
+          text: 'A:C Ratio',
+          color: 'rgb(209, 213, 219)',
+        },
+        suggestedMin: 0.5,
+        suggestedMax: 1.5,
+      },
+    },
+    plugins: {
+      legend: {
+        position: 'top' as const,
+        labels: {
+          color: 'rgb(209, 213, 219)',
+        }
+      },
+      tooltip: {
+        mode: 'index' as const,
+        intersect: false,
+      }
+    },
+  };
+
+  // Update the heart rate zone chart options
   const zoneChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -263,7 +381,7 @@ const Coach = () => {
       legend: {
         position: 'right' as const,
         labels: {
-          color: 'rgb(209, 213, 219)',
+          color: 'rgb(255, 255, 255)',  // Updated to white
           padding: 20,
           font: {
             size: 12
@@ -301,21 +419,6 @@ const Coach = () => {
     }
   };
 
-  // Add training load line graph data
-  const trainingLoadLineData = {
-    labels: ['7-Day Load', '28-Day Load'],
-    datasets: [
-      {
-        label: 'Training Load',
-        data: [trainingLoads.acute, trainingLoads.chronic],
-        borderColor: '#f97316',
-        backgroundColor: 'rgba(249, 115, 22, 0.1)',
-        fill: true,
-        tension: 0.4,
-      }
-    ]
-  };
-
   return (
     <div className="page-container">
       <div className="content-container">
@@ -348,20 +451,8 @@ const Coach = () => {
             className="glass-card p-6"
           >
             <h2 className="text-xl font-semibold text-white mb-4">Training Load</h2>
-            <div className="h-[300px] mb-4">
-              <Bar options={chartOptions} data={trainingLoadData} />
-            </div>
-            <div className="h-[100px]">
-              <Line options={{
-                ...chartOptions,
-                scales: {
-                  ...chartOptions.scales,
-                  x: {
-                    ...chartOptions.scales.x,
-                    display: false
-                  }
-                }
-              }} data={trainingLoadLineData} />
+            <div className="h-[400px]">
+              <Line options={trainingLoadChartOptions} data={trainingLoadLineData} />
             </div>
             <div className="mt-4 grid grid-cols-3 gap-4">
               <div className="text-center">
@@ -398,11 +489,15 @@ const Coach = () => {
               <p className="text-sm text-gray-300">
                 <span className="font-medium">Training Load Guide:</span>
                 <br />
-                • Acute Load: Training stress over the past 7 days
+                • Acute Load (7-day): Recent training stress
                 <br />
-                • Chronic Load: Average training load over the past 28 days
+                • Chronic Load (28-day): Long-term training adaptation
                 <br />
                 • A:C Ratio: Values between 0.8-1.5 indicate optimal training load
+                <br />
+                • Above 1.5: High risk of overtraining
+                <br />
+                • Below 0.8: Potential detraining
               </p>
             </div>
           </motion.div>
