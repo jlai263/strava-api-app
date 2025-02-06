@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response, NextFunction, RequestHandler } from 'express';
 import { PrismaClient } from '@prisma/client';
 import session from 'express-session';
 import axios from 'axios';
@@ -248,8 +248,13 @@ app.get('/api/stats', requireAuth, async (req: any, res) => {
   }
 });
 
+interface StravaUser {
+  id: number;
+  stravaAccessToken: string;
+}
+
 // Helper function to get user from session
-async function getUserFromSession(req: Request): Promise<{ stravaAccessToken: string } | null> {
+async function getUserFromSession(req: Request): Promise<StravaUser | null> {
   const accessToken = req.headers.authorization?.split(' ')[1];
   if (!accessToken) {
     return null;
@@ -262,6 +267,7 @@ async function getUserFromSession(req: Request): Promise<{ stravaAccessToken: st
     });
     
     return {
+      id: userResponse.data.id,
       stravaAccessToken: accessToken
     };
   } catch (error) {
@@ -313,7 +319,7 @@ async function fetchStravaActivities(accessToken: string, after: Date = EPOCH_ST
 }
 
 // GET /api/strava/activities - Get all activities with optional force refresh
-app.get('/api/strava/activities', async (req: Request, res: Response, next: NextFunction) => {
+const getActivitiesHandler: RequestHandler = async (req, res, next) => {
   try {
     const user = await getUserFromSession(req);
     if (!user) {
@@ -321,16 +327,57 @@ app.get('/api/strava/activities', async (req: Request, res: Response, next: Next
       return;
     }
 
-    const activities = await fetchStravaActivities(user.stravaAccessToken);
-    res.json(activities);
+    const forceRefresh = req.query.forceRefresh === 'true';
+    const after = req.query.after ? new Date(req.query.after as string) : EPOCH_START;
+    const before = req.query.before ? new Date(req.query.before as string) : new Date();
+
+    // Check if we need to refresh data
+    const needsRefresh = forceRefresh || await Activity.needsRefresh(user.id);
+
+    if (needsRefresh) {
+      console.log('[Strava API] Fetching new activities from Strava...');
+      const stravaActivities = await fetchStravaActivities(user.stravaAccessToken, after);
+      
+      // Bulk upsert activities
+      const result = await Activity.bulkUpsertActivities(stravaActivities, user.id);
+      console.log(`[Strava API] Upserted ${result.upsertedCount} activities, modified ${result.modifiedCount} activities`);
+    }
+
+    // Query activities from database with date range
+    const activities = await Activity.find({
+      userId: user.id,
+      start_date: { $gte: after, $lte: before }
+    }).sort({ start_date: -1 });
+
+    // Get metadata
+    const [earliest, latest] = await Promise.all([
+      Activity.getEarliestActivityDate(user.id),
+      Activity.getLatestActivityDate(user.id)
+    ]);
+
+    const metadata = {
+      count: activities.length,
+      dateRange: {
+        earliest: earliest?.toISOString() || null,
+        latest: latest?.toISOString() || null
+      },
+      lastSync: new Date().toISOString()
+    };
+
+    res.json({
+      activities,
+      metadata
+    });
   } catch (error: any) {
     next(error);
   }
-});
+};
+
+app.get('/api/strava/activities', getActivitiesHandler);
 
 // Error handling middleware
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-  console.error('Error handling Strava activities:', err);
+  console.error('Error handling request:', err);
   res.status(500).json({ error: err.message });
 });
 

@@ -1,6 +1,43 @@
-import mongoose from 'mongoose';
+import mongoose, { Document, Model, Schema } from 'mongoose';
 
-const activitySchema = new mongoose.Schema({
+interface IActivity extends Document {
+  stravaId: number;
+  userId: number;
+  type: string;
+  name: string;
+  distance: number;
+  moving_time: number;
+  elapsed_time: number;
+  total_elevation_gain: number;
+  start_date: Date;
+  start_date_local: Date;
+  timezone: string;
+  average_speed: number;
+  max_speed: number;
+  average_heartrate?: number;
+  max_heartrate?: number;
+  elev_high?: number;
+  elev_low?: number;
+  description?: string;
+  calories?: number;
+  startLatlng?: number[];
+  endLatlng?: number[];
+  map?: {
+    polyline?: string;
+  };
+  lastUpdated: Date;
+  lastStravaSync: Date;
+  dataSource: 'strava' | 'manual';
+}
+
+interface IActivityModel extends Model<IActivity> {
+  needsRefresh(userId: number): Promise<boolean>;
+  getLatestActivityDate(userId: number): Promise<Date | null>;
+  getEarliestActivityDate(userId: number): Promise<Date | null>;
+  bulkUpsertActivities(activities: any[], userId: number): Promise<{ modifiedCount: number; upsertedCount: number }>;
+}
+
+const activitySchema = new Schema<IActivity>({
   stravaId: {
     type: Number,
     required: true,
@@ -65,7 +102,7 @@ activitySchema.index({ userId: 1, lastStravaSync: -1 });
 activitySchema.index({ userId: 1, type: 1, start_date: -1 });
 
 // Static method to check if user's data needs refresh
-activitySchema.statics.needsRefresh = async function(userId) {
+activitySchema.statics.needsRefresh = async function(userId: number): Promise<boolean> {
   const latestSync = await this.findOne(
     { userId },
     { lastStravaSync: 1 },
@@ -82,7 +119,7 @@ activitySchema.statics.needsRefresh = async function(userId) {
 };
 
 // Static method to get the latest activity date
-activitySchema.statics.getLatestActivityDate = async function(userId) {
+activitySchema.statics.getLatestActivityDate = async function(userId: number): Promise<Date | null> {
   const latestActivity = await this.findOne(
     { userId },
     { start_date: 1 },
@@ -93,7 +130,7 @@ activitySchema.statics.getLatestActivityDate = async function(userId) {
 };
 
 // Static method to get the earliest activity date
-activitySchema.statics.getEarliestActivityDate = async function(userId) {
+activitySchema.statics.getEarliestActivityDate = async function(userId: number): Promise<Date | null> {
   const earliestActivity = await this.findOne(
     { userId },
     { start_date: 1 },
@@ -104,7 +141,10 @@ activitySchema.statics.getEarliestActivityDate = async function(userId) {
 };
 
 // Static method to bulk upsert activities
-activitySchema.statics.bulkUpsertActivities = async function(activities, userId) {
+activitySchema.statics.bulkUpsertActivities = async function(
+  activities: any[],
+  userId: number
+): Promise<{ modifiedCount: number; upsertedCount: number }> {
   if (!activities || activities.length === 0) return { modifiedCount: 0, upsertedCount: 0 };
 
   const operations = activities.map(activity => ({
@@ -136,6 +176,6 @@ activitySchema.statics.bulkUpsertActivities = async function(activities, userId)
   };
 };
 
-const Activity = mongoose.model('Activity', activitySchema);
+const Activity = mongoose.model<IActivity, IActivityModel>('Activity', activitySchema);
 
 export default Activity; 
