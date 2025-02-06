@@ -301,6 +301,21 @@ const Coach = () => {
     }
   };
 
+  // Add training load line graph data
+  const trainingLoadLineData = {
+    labels: ['7-Day Load', '28-Day Load'],
+    datasets: [
+      {
+        label: 'Training Load',
+        data: [trainingLoads.acute, trainingLoads.chronic],
+        borderColor: '#f97316',
+        backgroundColor: 'rgba(249, 115, 22, 0.1)',
+        fill: true,
+        tension: 0.4,
+      }
+    ]
+  };
+
   return (
     <div className="page-container">
       <div className="content-container">
@@ -324,35 +339,47 @@ const Coach = () => {
           </div>
         )}
 
-        {/* Training Load Chart */}
+        {/* Training Load Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
             className="glass-card p-6"
           >
             <h2 className="text-xl font-semibold text-white mb-4">Training Load</h2>
-            <div className="h-[300px]">
+            <div className="h-[300px] mb-4">
               <Bar options={chartOptions} data={trainingLoadData} />
+            </div>
+            <div className="h-[100px]">
+              <Line options={{
+                ...chartOptions,
+                scales: {
+                  ...chartOptions.scales,
+                  x: {
+                    ...chartOptions.scales.x,
+                    display: false
+                  }
+                }
+              }} data={trainingLoadLineData} />
             </div>
             <div className="mt-4 grid grid-cols-3 gap-4">
               <div className="text-center">
-                <p className="text-gray-400 text-sm">7-Day Load</p>
+                <p className="text-gray-300 text-sm">7-Day Load</p>
                 <p className="text-xl font-semibold text-white">
                   {Math.round(trainingLoads.acute)}
                 </p>
-                <p className="text-gray-500 text-xs">Acute Training Load</p>
+                <p className="text-gray-400 text-xs">Acute Training Load</p>
               </div>
               <div className="text-center">
-                <p className="text-gray-400 text-sm">28-Day Load</p>
+                <p className="text-gray-300 text-sm">28-Day Load</p>
                 <p className="text-xl font-semibold text-white">
                   {Math.round(trainingLoads.chronic)}
                 </p>
-                <p className="text-gray-500 text-xs">Chronic Training Load</p>
+                <p className="text-gray-400 text-xs">Chronic Training Load</p>
               </div>
               <div className="text-center">
-                <p className="text-gray-400 text-sm">A:C Ratio</p>
+                <p className="text-gray-300 text-sm">A:C Ratio</p>
                 <p className={`text-xl font-semibold ${
                   trainingLoads.ratio > 1.5 ? 'text-red-500' :
                   trainingLoads.ratio < 0.8 ? 'text-yellow-500' :
@@ -360,7 +387,7 @@ const Coach = () => {
                 }`}>
                   {trainingLoads.ratio.toFixed(2)}
                 </p>
-                <p className="text-gray-500 text-xs">
+                <p className="text-gray-400 text-xs">
                   {trainingLoads.ratio > 1.5 ? 'High Risk' :
                    trainingLoads.ratio < 0.8 ? 'Detraining' :
                    'Optimal Range'}
@@ -384,7 +411,7 @@ const Coach = () => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
             className="glass-card p-6"
           >
             <h2 className="text-xl font-semibold text-white mb-4">Heart Rate Zone Distribution</h2>
@@ -401,7 +428,7 @@ const Coach = () => {
                     index === 3 ? 'bg-yellow-400' :
                     'bg-red-400'
                   }`} />
-                  <p className="text-sm font-medium text-white">Zone {index + 1}</p>
+                  <p className="text-sm font-medium text-gray-300">Zone {index + 1}</p>
                   <p className="text-xs text-gray-400">{percentage.toFixed(1)}%</p>
                 </div>
               ))}

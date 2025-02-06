@@ -51,19 +51,49 @@ const StatCard: React.FC<{ title: string; value: string; icon: string }> = ({ ti
 );
 
 const ActivityChart = ({ activities }: { activities: Activity[] }) => {
-  // Get last 30 days of activities
-  const last30Days = [...activities]
-    .sort((a, b) => new Date(a.start_date_local).getTime() - new Date(b.start_date_local).getTime())
-    .slice(-30);
+  // Get last 30 days of dates
+  const generateLast30Days = () => {
+    const dates: Date[] = [];
+    const now = new Date();
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(now);
+      date.setDate(now.getDate() - i);
+      dates.push(date);
+    }
+    return dates;
+  };
+
+  // Create a map of dates to total distances
+  const activityMap = new Map<string, number>();
+  const last30Days = generateLast30Days();
+  
+  // Initialize all dates with 0 distance
+  last30Days.forEach(date => {
+    activityMap.set(date.toISOString().split('T')[0], 0);
+  });
+
+  // Fill in actual activity distances
+  activities.forEach(activity => {
+    const date = new Date(activity.start_date_local);
+    const dateStr = date.toISOString().split('T')[0];
+    if (activityMap.has(dateStr)) {
+      activityMap.set(dateStr, (activityMap.get(dateStr) || 0) + activity.distance / 1000);
+    }
+  });
 
   const data = {
-    labels: last30Days.map(activity => 
-      new Date(activity.start_date_local).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    ),
+    labels: Array.from(activityMap.keys()).map(dateStr => {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric',
+        timeZone: 'UTC'
+      });
+    }),
     datasets: [
       {
         label: 'Distance (km)',
-        data: last30Days.map(activity => activity.distance / 1000),
+        data: Array.from(activityMap.values()),
         fill: true,
         borderColor: '#f97316',
         backgroundColor: 'rgba(249, 115, 22, 0.1)',
@@ -89,6 +119,14 @@ const ActivityChart = ({ activities }: { activities: Activity[] }) => {
         font: {
           size: 16
         }
+      },
+      tooltip: {
+        callbacks: {
+          label: (context) => {
+            const value = context.raw as number;
+            return `Distance: ${value.toFixed(1)} km`;
+          }
+        }
       }
     },
     scales: {
@@ -97,10 +135,13 @@ const ActivityChart = ({ activities }: { activities: Activity[] }) => {
           color: 'rgba(255, 255, 255, 0.1)'
         },
         ticks: {
-          color: 'rgb(209, 213, 219)'
+          color: 'rgb(209, 213, 219)',
+          maxRotation: 45,
+          minRotation: 45
         }
       },
       y: {
+        beginAtZero: true,
         grid: {
           color: 'rgba(255, 255, 255, 0.1)'
         },
@@ -158,7 +199,7 @@ const RecentActivities = ({ activities }: { activities: Activity[] }) => {
 };
 
 const Dashboard = () => {
-  const { activities, loading, error } = useActivities();
+  const { activities, isLoading, error } = useActivities();
   const [stats, setStats] = useState<Stats>({
     totalDistance: 0,
     totalTime: 0,
@@ -192,7 +233,7 @@ const Dashboard = () => {
     { color: 'bg-orange-500/20', delay: 'animation-delay-4000' }
   ];
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="page-container flex items-center justify-center">
         <div className="text-center">

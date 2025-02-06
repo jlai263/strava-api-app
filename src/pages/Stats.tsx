@@ -105,8 +105,10 @@ const Stats = () => {
 
     // Fill in activity data
     filteredActivities.forEach(activity => {
-      const date = new Date(activity.start_date_local).toISOString().split('T')[0];
-      const existing = activityMap.get(date) || {
+      // Convert to local date string to handle timezone correctly
+      const localDate = new Date(activity.start_date_local);
+      const dateStr = localDate.toISOString().split('T')[0];
+      const existing = activityMap.get(dateStr) || {
         count: 0,
         distance: 0,
         elevation: 0,
@@ -114,7 +116,7 @@ const Stats = () => {
         validHeartRateCount: 0
       };
 
-      activityMap.set(date, {
+      activityMap.set(dateStr, {
         count: existing.count + 1,
         distance: existing.distance + activity.distance,
         elevation: existing.elevation + activity.total_elevation_gain,
@@ -128,7 +130,7 @@ const Stats = () => {
       const dateObj = new Date(date);
       return timeRange === 'year'
         ? dateObj.toLocaleDateString('en-US', { month: 'short' })
-        : dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        : dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
     });
 
     const distances = Array.from(activityMap.values()).map(data => data.distance / 1000);
@@ -286,7 +288,7 @@ const Stats = () => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
             className="glass-card p-6"
           >
             <h2 className="text-xl font-semibold text-white mb-4">Distance Over Time</h2>
@@ -299,7 +301,7 @@ const Stats = () => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, ease: "easeOut", delay: 0.1 }}
+            transition={{ duration: 0.15, ease: "easeOut", delay: 0.05 }}
             className="glass-card p-6"
           >
             <h2 className="text-xl font-semibold text-white mb-4">Elevation Gain</h2>
@@ -312,7 +314,7 @@ const Stats = () => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, ease: "easeOut", delay: 0.2 }}
+            transition={{ duration: 0.15, ease: "easeOut", delay: 0.1 }}
             className="glass-card p-6 lg:col-span-2"
           >
             <h2 className="text-xl font-semibold text-white mb-4">Heart Rate Trends</h2>
