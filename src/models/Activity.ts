@@ -1,6 +1,6 @@
 import mongoose, { Document, Model, Schema } from 'mongoose';
 
-interface IActivity extends Document {
+export interface IActivity extends Document {
   stravaId: number;
   userId: number;
   type: string;

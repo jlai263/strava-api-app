@@ -9,7 +9,7 @@
     "dev:frontend": "vite",
     "dev:backend": "node server.js",
     "dev": "ts-node-esm server/index.ts",
-    "build": "tsc",
+    "build": "tsc && vite build",
     "postinstall": "npm run build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
