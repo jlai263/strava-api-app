@@ -408,15 +408,20 @@ async function updateMongoCache(userId: string, activities: any[]): Promise<void
 // Update the activities endpoint
 app.get('/api/strava/activities', async (req: Request, res: Response): Promise<void> => {
   const accessToken = req.headers.authorization?.split(' ')[1];
-  const userId = req.user?.id;
-  const fullSync = req.query.fullSync === 'true';
-
-  if (!accessToken || !userId) {
-    res.status(401).json({ error: 'Unauthorized' });
+  
+  if (!accessToken) {
+    res.status(401).json({ error: 'Unauthorized - No access token provided' });
     return;
   }
 
   try {
+    // First get the user's Strava ID
+    const userResponse = await axios.get('https://www.strava.com/api/v3/athlete', {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    const userId = userResponse.data.id.toString();
+    const fullSync = req.query.fullSync === 'true';
+
     console.log(`[Server] Fetching activities for user ${userId} (fullSync: ${fullSync})`);
     
     // Get the last sync time from MongoDB
@@ -434,6 +439,7 @@ app.get('/api/strava/activities', async (req: Request, res: Response): Promise<v
     }
 
     // Fetch activities from Strava with pagination
+    console.log('[Server] Starting paginated fetch from Strava API...');
     const activities = await fetchStravaActivities(accessToken, after);
     console.log(`[Server] Retrieved ${activities.length} total activities from Strava`);
 
@@ -451,10 +457,17 @@ app.get('/api/strava/activities', async (req: Request, res: Response): Promise<v
 
   } catch (error: any) {
     console.error('[Server] Error:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch activities',
-      details: error.message
-    });
+    if (error.response?.status === 401) {
+      res.status(401).json({ 
+        error: 'Unauthorized - Invalid or expired token',
+        details: error.response?.data || error.message
+      });
+    } else {
+      res.status(500).json({ 
+        error: 'Failed to fetch activities',
+        details: error.message
+      });
+    }
   }
 });
 

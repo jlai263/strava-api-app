@@ -99,6 +99,7 @@ export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       console.log(`[ActivitiesContext] ${needsFullRefresh ? 'Full refresh' : 'Sync check'} requested`);
       
       try {
+        // Use the paginated endpoint instead of /api/activities
         const response = await axios.get('/api/strava/activities', {
           headers: {
             'Authorization': `Bearer ${accessToken}`
@@ -118,6 +119,7 @@ export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const newest = new Date(Math.max(...dates.map(d => d.getTime())));
           const oldest = new Date(Math.min(...dates.map(d => d.getTime())));
           console.log(`[ActivitiesContext] Received activities range: ${oldest.toISOString()} to ${newest.toISOString()}`);
+          console.log(`[ActivitiesContext] Total activities received: ${response.data.length}`);
         }
 
         // Sort activities by date (most recent first)
