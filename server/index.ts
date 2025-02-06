@@ -4,7 +4,7 @@ import session from 'express-session';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { MongoClient } from 'mongodb';
-import Activity from '../models/Activity';
+import Activity from '../src/models/Activity';
 
 dotenv.config();
 
