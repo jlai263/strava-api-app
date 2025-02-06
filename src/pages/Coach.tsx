@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useActivities, Activity } from '../context/ActivitiesContext';
+import { useActivities } from '../context/ActivitiesContext';
 import { calculateTrainingLoad, calculateZoneDistribution } from '../utils/trainingMetrics';
 import { Line, Doughnut, Bar } from 'react-chartjs-2';
 import {
@@ -31,7 +31,7 @@ ChartJS.register(
 );
 
 const Coach = () => {
-  const { activities, loading, error } = useActivities();
+  const { activities, isLoading, error } = useActivities();
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [trainingLoads, setTrainingLoads] = useState({
     acute: 0,
@@ -48,19 +48,19 @@ const Coach = () => {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
 
-  // Calculate metrics when activities change
   useEffect(() => {
-    if (activities.length > 0) {
-      // Filter for running activities only
-      const runningActivities = activities.filter(activity => activity.type === 'Run');
-      
-      if (runningActivities.length > 0) {
-        const loads = calculateTrainingLoad(runningActivities);
-        const zones = calculateZoneDistribution(runningActivities);
+    if (activities && activities.length > 0) {
+      // Calculate training loads
+      const loads = calculateTrainingLoad(activities);
+      setTrainingLoads({
+        acute: loads.acute,
+        chronic: loads.chronic,
+        ratio: loads.chronic > 0 ? loads.acute / loads.chronic : 0
+      });
 
-        setTrainingLoads(loads);
-        setZoneDistribution(zones);
-      }
+      // Calculate zone distribution
+      const zones = calculateZoneDistribution(activities);
+      setZoneDistribution(zones);
     }
   }, [activities]);
 
@@ -95,104 +95,124 @@ const Coach = () => {
     }
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="page-container flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-orange-500 mb-4"></div>
-          <p className="text-gray-400">Loading activities...</p>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="page-container flex items-center justify-center">
-        <div className="text-center text-red-500">
-          <p>{error}</p>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-red-500">Error loading activities: {error}</div>
       </div>
     );
   }
 
+  if (!activities || activities.length === 0) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-gray-500">No activities found. Start training to see your stats!</div>
+      </div>
+    );
+  }
+
+  // Prepare chart data
   const trainingLoadData = {
-    labels: Object.keys(trainingLoads),
+    labels: ['7-Day Load', '28-Day Load'],
     datasets: [
       {
-        label: 'Acute Load (Daily)',
-        data: Object.values(trainingLoads),
-        borderColor: '#f97316',
-        backgroundColor: 'rgba(249, 115, 22, 0.1)',
-        fill: true,
-        tension: 0.4,
+        label: 'Training Load',
+        data: [trainingLoads.acute, trainingLoads.chronic],
+        backgroundColor: [
+          'rgba(59, 130, 246, 0.5)', // blue-500 with opacity
+          'rgba(16, 185, 129, 0.5)', // green-500 with opacity
+        ],
+        borderColor: [
+          'rgb(59, 130, 246)',
+          'rgb(16, 185, 129)',
+        ],
+        borderWidth: 1,
       },
-      {
-        label: 'Chronic Load (Weekly)',
-        data: Object.values(trainingLoads),
-        borderColor: '#06b6d4',
-        backgroundColor: 'rgba(6, 182, 212, 0.1)',
-        fill: true,
-        tension: 0.4,
-      }
-    ]
+    ],
   };
 
   const zoneDistributionData = {
     labels: [
-      'Zone 1 - Recovery (50-60% HRmax)',
-      'Zone 2 - Aerobic (60-70% HRmax)',
-      'Zone 3 - Tempo (70-80% HRmax)',
-      'Zone 4 - Threshold (80-90% HRmax)',
-      'Zone 5 - VO2 Max (90-100% HRmax)'
+      'Zone 1 - Recovery',
+      'Zone 2 - Aerobic Base',
+      'Zone 3 - Aerobic Power',
+      'Zone 4 - Threshold',
+      'Zone 5 - VO2 Max',
     ],
     datasets: [{
-      data: Object.values(zoneDistribution),
-      backgroundColor: [
-        '#22c55e', // Green for Zone 1
-        '#3b82f6', // Blue for Zone 2
-        '#f59e0b', // Yellow for Zone 3
-        '#f97316', // Orange for Zone 4
-        '#ef4444'  // Red for Zone 5
+      data: [
+        zoneDistribution.zone1,
+        zoneDistribution.zone2,
+        zoneDistribution.zone3,
+        zoneDistribution.zone4,
+        zoneDistribution.zone5,
       ],
-      borderWidth: 0
-    }]
+      backgroundColor: [
+        'rgba(156, 163, 175, 0.8)', // gray-400
+        'rgba(96, 165, 250, 0.8)',  // blue-400
+        'rgba(74, 222, 128, 0.8)',  // green-400
+        'rgba(250, 204, 21, 0.8)',  // yellow-400
+        'rgba(248, 113, 113, 0.8)', // red-400
+      ],
+      borderColor: [
+        'rgb(156, 163, 175)',
+        'rgb(96, 165, 250)',
+        'rgb(74, 222, 128)',
+        'rgb(250, 204, 21)',
+        'rgb(248, 113, 113)',
+      ],
+      borderWidth: 1,
+    }],
   };
 
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'top' as const,
-        labels: {
-          color: 'rgb(209, 213, 219)'
-        }
-      }
-    },
     scales: {
+      y: {
+        beginAtZero: true,
+        grid: {
+          color: 'rgba(255, 255, 255, 0.1)',
+        },
+        ticks: {
+          color: 'rgb(209, 213, 219)',
+        },
+      },
       x: {
         grid: {
-          color: 'rgba(255, 255, 255, 0.1)'
+          display: false,
         },
         ticks: {
-          color: 'rgb(209, 213, 219)'
-        }
+          color: 'rgb(209, 213, 219)',
+        },
       },
-      y: {
-        grid: {
-          color: 'rgba(255, 255, 255, 0.1)'
-        },
-        ticks: {
-          color: 'rgb(209, 213, 219)'
-        }
-      }
-    }
+    },
+    plugins: {
+      legend: {
+        display: false,
+      },
+      tooltip: {
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        titleColor: 'rgb(255, 255, 255)',
+        bodyColor: 'rgb(209, 213, 219)',
+        padding: 12,
+        displayColors: false,
+      },
+    },
   };
 
   const doughnutOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    cutout: '65%',
     plugins: {
       legend: {
         position: 'right' as const,
@@ -201,6 +221,80 @@ const Coach = () => {
           padding: 20,
           font: {
             size: 12
+          },
+          generateLabels: (chart) => {
+            const data = chart.data;
+            if (data.labels.length && data.datasets.length) {
+              return data.labels.map((label, i) => ({
+                text: `${label} (${Math.round(data.datasets[0].data[i])}%)`,
+                fillStyle: data.datasets[0].backgroundColor[i],
+                hidden: false,
+                lineCap: undefined,
+                lineDash: undefined,
+                lineDashOffset: undefined,
+                lineJoin: undefined,
+                lineWidth: 0,
+                strokeStyle: undefined,
+                pointStyle: undefined,
+                rotation: undefined,
+              }));
+            }
+            return [];
+          }
+        }
+      },
+      tooltip: {
+        callbacks: {
+          label: (context) => {
+            const label = context.label?.split(' - ')[0] || '';
+            const value = context.raw || 0;
+            return `${label}: ${Math.round(value)}%`;
+          }
+        }
+      }
+    }
+  };
+
+  const zoneChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: '65%',
+    plugins: {
+      legend: {
+        position: 'right' as const,
+        labels: {
+          color: 'rgb(209, 213, 219)',
+          padding: 20,
+          font: {
+            size: 12
+          },
+          generateLabels: (chart) => {
+            const data = chart.data;
+            if (data.labels.length && data.datasets.length) {
+              return data.labels.map((label, i) => ({
+                text: `${label} (${Math.round(data.datasets[0].data[i])}%)`,
+                fillStyle: data.datasets[0].backgroundColor[i],
+                hidden: false,
+                lineCap: undefined,
+                lineDash: undefined,
+                lineDashOffset: undefined,
+                lineJoin: undefined,
+                lineWidth: 0,
+                strokeStyle: undefined,
+                pointStyle: undefined,
+                rotation: undefined,
+              }));
+            }
+            return [];
+          }
+        }
+      },
+      tooltip: {
+        callbacks: {
+          label: (context) => {
+            const label = context.label?.split(' - ')[0] || '';
+            const value = context.raw || 0;
+            return `${label}: ${Math.round(value)}%`;
           }
         }
       }
@@ -240,42 +334,92 @@ const Coach = () => {
           >
             <h2 className="text-xl font-semibold text-white mb-4">Training Load</h2>
             <div className="h-[300px]">
-              <Line options={chartOptions} data={trainingLoadData} />
+              <Bar options={chartOptions} data={trainingLoadData} />
             </div>
             <div className="mt-4 grid grid-cols-3 gap-4">
               <div className="text-center">
-                <p className="text-gray-400 text-sm">Acute Load</p>
+                <p className="text-gray-400 text-sm">7-Day Load</p>
                 <p className="text-xl font-semibold text-white">
                   {Math.round(trainingLoads.acute)}
                 </p>
+                <p className="text-gray-500 text-xs">Acute Training Load</p>
               </div>
               <div className="text-center">
-                <p className="text-gray-400 text-sm">Chronic Load</p>
+                <p className="text-gray-400 text-sm">28-Day Load</p>
                 <p className="text-xl font-semibold text-white">
                   {Math.round(trainingLoads.chronic)}
                 </p>
+                <p className="text-gray-500 text-xs">Chronic Training Load</p>
               </div>
               <div className="text-center">
                 <p className="text-gray-400 text-sm">A:C Ratio</p>
                 <p className={`text-xl font-semibold ${
-                  trainingLoads.ratio > 1.5 ? 'text-red-500' : trainingLoads.ratio < 0.8 ? 'text-yellow-500' : 'text-green-500'
+                  trainingLoads.ratio > 1.5 ? 'text-red-500' :
+                  trainingLoads.ratio < 0.8 ? 'text-yellow-500' :
+                  'text-green-500'
                 }`}>
                   {trainingLoads.ratio.toFixed(2)}
                 </p>
+                <p className="text-gray-500 text-xs">
+                  {trainingLoads.ratio > 1.5 ? 'High Risk' :
+                   trainingLoads.ratio < 0.8 ? 'Detraining' :
+                   'Optimal Range'}
+                </p>
               </div>
+            </div>
+            <div className="mt-4 p-4 bg-gray-800/50 rounded-lg">
+              <p className="text-sm text-gray-300">
+                <span className="font-medium">Training Load Guide:</span>
+                <br />
+                • Acute Load: Training stress over the past 7 days
+                <br />
+                • Chronic Load: Average training load over the past 28 days
+                <br />
+                • A:C Ratio: Values between 0.8-1.5 indicate optimal training load
+              </p>
             </div>
           </motion.div>
 
-          {/* Training Zones Distribution */}
+          {/* Heart Rate Zone Distribution */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, ease: "easeOut", delay: 0.1 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
             className="glass-card p-6"
           >
-            <h2 className="text-xl font-semibold text-white mb-4">Training Zones Distribution</h2>
+            <h2 className="text-xl font-semibold text-white mb-4">Heart Rate Zone Distribution</h2>
             <div className="h-[300px]">
-              <Doughnut options={doughnutOptions} data={zoneDistributionData} />
+              <Doughnut options={zoneChartOptions} data={zoneDistributionData} />
+            </div>
+            <div className="mt-4 grid grid-cols-5 gap-2">
+              {Object.entries(zoneDistribution).map(([zone, percentage], index) => (
+                <div key={zone} className="text-center">
+                  <div className={`w-full h-2 rounded-full mb-2 ${
+                    index === 0 ? 'bg-gray-400' :
+                    index === 1 ? 'bg-blue-400' :
+                    index === 2 ? 'bg-green-400' :
+                    index === 3 ? 'bg-yellow-400' :
+                    'bg-red-400'
+                  }`} />
+                  <p className="text-sm font-medium text-white">Zone {index + 1}</p>
+                  <p className="text-xs text-gray-400">{percentage.toFixed(1)}%</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 p-4 bg-gray-800/50 rounded-lg">
+              <p className="text-sm text-gray-300">
+                <span className="font-medium">Heart Rate Zones:</span>
+                <br />
+                • Zone 1 (50-60%): Recovery/Easy
+                <br />
+                • Zone 2 (60-70%): Aerobic Base
+                <br />
+                • Zone 3 (70-80%): Aerobic Power
+                <br />
+                • Zone 4 (80-90%): Lactate Threshold
+                <br />
+                • Zone 5 (90-100%): VO2 Max
+              </p>
             </div>
           </motion.div>
         </div>

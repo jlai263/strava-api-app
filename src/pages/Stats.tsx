@@ -29,7 +29,7 @@ ChartJS.register(
 
 const Stats = () => {
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'year'>('week');
-  const { activities, loading, error } = useActivities();
+  const { activities, isLoading, error } = useActivities();
 
   const filterActivitiesByTimeRange = (activities: Activity[]) => {
     const now = new Date();
@@ -53,110 +53,94 @@ const Stats = () => {
     );
   };
 
+  const generateDateRange = (startDate: Date, endDate: Date): Date[] => {
+    const dates: Date[] = [];
+    const currentDate = new Date(startDate);
+    
+    while (currentDate <= endDate) {
+      dates.push(new Date(currentDate));
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    return dates;
+  };
+
   const prepareChartData = () => {
+    // Get date range
+    const now = new Date();
+    const startDate = new Date();
+    
+    switch (timeRange) {
+      case 'week':
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case 'month':
+        startDate.setMonth(now.getMonth() - 1);
+        break;
+      case 'year':
+        startDate.setFullYear(now.getFullYear() - 1);
+        break;
+    }
+
+    // Generate all dates in the range
+    const dateRange = generateDateRange(startDate, now);
+    
     // Filter for running activities only and within time range
     const filteredActivities = filterActivitiesByTimeRange(activities).filter(activity => 
       activity.type.toLowerCase().includes('run')
     );
     
-    // Group activities by date and calculate metrics
-    const groupedActivities = filteredActivities.reduce((acc, activity) => {
-      const date = new Date(activity.start_date_local).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
+    // Create a map of dates to activities
+    const activityMap = new Map();
+    dateRange.forEach(date => {
+      const dateStr = date.toISOString().split('T')[0];
+      activityMap.set(dateStr, {
+        count: 0,
+        distance: 0,
+        elevation: 0,
+        heartRateSum: 0,
+        validHeartRateCount: 0
       });
-      
-      if (!acc[date]) {
-        acc[date] = {
-          count: 1,
-          distance: activity.distance,
-          elevation: activity.total_elevation_gain,
-          heartRateSum: activity.average_heartrate || 0,
-          validHeartRateCount: activity.average_heartrate ? 1 : 0
-        };
-      } else {
-        acc[date].count += 1;
-        acc[date].distance += activity.distance; // Sum distances
-        acc[date].elevation += activity.total_elevation_gain; // Sum elevation gains
-        if (activity.average_heartrate) {
-          acc[date].heartRateSum += activity.average_heartrate;
-          acc[date].validHeartRateCount += 1;
-        }
-      }
-      return acc;
-    }, {} as Record<string, { 
-      count: number; 
-      distance: number; 
-      elevation: number; 
-      heartRateSum: number;
-      validHeartRateCount: number;
-    }>);
+    });
 
-    // Convert grouped data to arrays and calculate averages/sums
-    const sortedDates = Object.keys(groupedActivities).sort((a, b) => 
-      new Date(a).getTime() - new Date(b).getTime()
-    );
+    // Fill in activity data
+    filteredActivities.forEach(activity => {
+      const date = new Date(activity.start_date_local).toISOString().split('T')[0];
+      const existing = activityMap.get(date) || {
+        count: 0,
+        distance: 0,
+        elevation: 0,
+        heartRateSum: 0,
+        validHeartRateCount: 0
+      };
 
-    const labels = sortedDates.map(date => {
+      activityMap.set(date, {
+        count: existing.count + 1,
+        distance: existing.distance + activity.distance,
+        elevation: existing.elevation + activity.total_elevation_gain,
+        heartRateSum: existing.heartRateSum + (activity.average_heartrate || 0),
+        validHeartRateCount: existing.validHeartRateCount + (activity.average_heartrate ? 1 : 0)
+      });
+    });
+
+    // Convert to arrays for charting
+    const labels = Array.from(activityMap.keys()).map(date => {
       const dateObj = new Date(date);
       return timeRange === 'year'
         ? dateObj.toLocaleDateString('en-US', { month: 'short' })
         : dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     });
 
-    const distances = sortedDates.map(date => {
-      const group = groupedActivities[date];
-      return group.distance / 1000; // Convert to km, use total
-    });
-
-    const elevations = sortedDates.map(date => {
-      const group = groupedActivities[date];
-      return group.elevation; // Use total elevation
-    });
-
-    const heartRates = sortedDates.map(date => {
-      const group = groupedActivities[date];
-      return group.validHeartRateCount > 0 
-        ? group.heartRateSum / group.validHeartRateCount // Average heart rate
-        : 0;
-    });
+    const distances = Array.from(activityMap.values()).map(data => data.distance / 1000);
+    const elevations = Array.from(activityMap.values()).map(data => data.elevation);
+    const heartRates = Array.from(activityMap.values()).map(data => 
+      data.validHeartRateCount > 0 ? data.heartRateSum / data.validHeartRateCount : 0
+    );
 
     return { labels, distances, elevations, heartRates };
   };
 
   const { labels, distances, elevations, heartRates } = prepareChartData();
-
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'top' as const,
-        labels: {
-          color: 'rgb(209, 213, 219)'
-        }
-      }
-    },
-    scales: {
-      x: {
-        grid: {
-          color: 'rgba(255, 255, 255, 0.1)'
-        },
-        ticks: {
-          color: 'rgb(209, 213, 219)'
-        }
-      },
-      y: {
-        grid: {
-          color: 'rgba(255, 255, 255, 0.1)'
-        },
-        ticks: {
-          color: 'rgb(209, 213, 219)'
-        }
-      }
-    }
-  };
 
   const distanceData = {
     labels,
@@ -197,7 +181,60 @@ const Stats = () => {
     ],
   };
 
-  if (loading) {
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top' as const,
+        labels: {
+          color: 'rgb(209, 213, 219)'
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: {
+          color: 'rgba(255, 255, 255, 0.1)'
+        },
+        ticks: {
+          color: 'rgb(209, 213, 219)'
+        }
+      },
+      y: {
+        beginAtZero: true,
+        grid: {
+          color: 'rgba(255, 255, 255, 0.1)'
+        },
+        ticks: {
+          color: 'rgb(209, 213, 219)'
+        }
+      }
+    }
+  };
+
+  // Calculate summary stats based on filtered activities
+  const calculateSummaryStats = () => {
+    const filteredActivities = filterActivitiesByTimeRange(activities);
+    const totalDistance = filteredActivities.reduce((sum, activity) => sum + activity.distance, 0);
+    const totalTime = filteredActivities.reduce((sum, activity) => sum + activity.moving_time, 0);
+    const validHeartRates = filteredActivities.filter(activity => activity.average_heartrate);
+    const avgHeartRate = validHeartRates.length > 0
+      ? validHeartRates.reduce((sum, activity) => sum + (activity.average_heartrate || 0), 0) / validHeartRates.length
+      : 0;
+    const totalElevation = filteredActivities.reduce((sum, activity) => sum + activity.total_elevation_gain, 0);
+
+    return {
+      totalDistance,
+      totalTime,
+      avgHeartRate,
+      totalElevation
+    };
+  };
+
+  const summaryStats = calculateSummaryStats();
+
+  if (isLoading) {
     return (
       <div className="page-container flex items-center justify-center">
         <div className="text-center">
@@ -290,19 +327,19 @@ const Stats = () => {
           {[
             { 
               label: 'Total Distance', 
-              value: `${(distances.reduce((a, b) => a + b, 0)).toFixed(1)} km` 
+              value: `${(summaryStats.totalDistance / 1000).toFixed(1)} km` 
             },
             { 
               label: 'Total Time', 
-              value: `${Math.floor(activities.reduce((a, b) => a + b.moving_time, 0) / 3600)}h ${Math.floor((activities.reduce((a, b) => a + b.moving_time, 0) % 3600) / 60)}m` 
+              value: `${Math.floor(summaryStats.totalTime / 3600)}h ${Math.floor((summaryStats.totalTime % 3600) / 60)}m` 
             },
             { 
               label: 'Avg Heart Rate', 
-              value: `${Math.round(heartRates.reduce((a, b) => a + b, 0) / heartRates.filter(hr => hr > 0).length)} bpm` 
+              value: `${Math.round(summaryStats.avgHeartRate)} bpm` 
             },
             { 
               label: 'Total Elevation', 
-              value: `${Math.round(elevations.reduce((a, b) => a + b, 0))} m` 
+              value: `${Math.round(summaryStats.totalElevation)} m` 
             }
           ].map((stat, index) => (
             <motion.div

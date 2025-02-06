@@ -24,11 +24,16 @@ export interface Activity {
   calories: number;
   lastUpdated: string;
   lastStravaSync: string;
+  startLatlng?: [number, number];
+  endLatlng?: [number, number];
+  map?: {
+    polyline: string;
+  };
 }
 
-interface ActivitiesContextType {
+export interface ActivitiesContextType {
   activities: Activity[];
-  loading: boolean;
+  isLoading: boolean;
   error: string | null;
   refreshActivities: () => Promise<void>;
 }
@@ -40,19 +45,19 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes local cache
 
 export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activities, setActivities] = useState<Activity[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { accessToken } = useAuth();
 
   const fetchActivities = useCallback(async (force = false) => {
     if (!accessToken) {
       setError('No access token available');
-      setLoading(false);
+      setIsLoading(false);
       return;
     }
 
     try {
-      setLoading(true);
+      setIsLoading(true);
       setError(null);
 
       // Check local storage cache first (unless force refresh)
@@ -65,7 +70,7 @@ export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (age < CACHE_DURATION) {
             console.log('[ActivitiesContext] Using local cache, age:', Math.round(age / 1000), 'seconds');
             setActivities(data);
-            setLoading(false);
+            setIsLoading(false);
             return;
           } else {
             console.log('[ActivitiesContext] Cache expired, age:', Math.round(age / 1000), 'seconds');
@@ -110,7 +115,7 @@ export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setActivities(data);
       }
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   }, [accessToken]);
 
@@ -125,7 +130,7 @@ export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const contextValue = {
     activities,
-    loading,
+    isLoading,
     error,
     refreshActivities: () => fetchActivities(true)
   };
