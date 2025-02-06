@@ -1,21 +1,20 @@
-import express from 'express';
-import type { Request, Response, NextFunction, RequestHandler } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
 import session from 'express-session';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { MongoClient } from 'mongodb';
-import Activity from './models/Activity.js';
-import type { ParamsDictionary } from 'express-serve-static-core';
-import type { ParsedQs } from 'qs';
-import cors from 'cors';
 
 dotenv.config();
 
-// Extend Express Request type to include session
-declare module 'express-session' {
-  interface SessionData {
-    userId: string;
+// Extend Express Request type
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        id: string;
+      };
+    }
   }
 }
 
@@ -27,7 +26,6 @@ const port = process.env.PORT || 3000;
 const PER_PAGE = 100; // Maximum allowed by Strava API
 const RATE_LIMIT_DELAY = 1000; // 1 second delay between requests
 const MAX_RETRIES = 3; // Maximum number of retries for failed requests
-const EPOCH_START = new Date('2000-01-01T00:00:00Z');
 
 // MongoDB connection
 const mongoClient = new MongoClient(process.env.MONGODB_URI || 'mongodb://localhost:27017');
@@ -56,20 +54,19 @@ app.use(session({
 }));
 
 // Auth check middleware
-const requireAuth: RequestHandler = (req: Request, res: Response, next: NextFunction) => {
+const requireAuth = (req: any, res: any, next: any) => {
   if (!req.session.userId) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
+    return res.status(401).json({ error: 'Unauthorized' });
   }
   next();
 };
 
 // Auth routes
-app.get('/api/auth/check', (req: Request, res: Response) => {
+app.get('/api/auth/check', (req: any, res) => {
   res.json({ isAuthenticated: !!req.session.userId });
 });
 
-app.get('/api/auth/callback', async (req: Request, res: Response) => {
+app.get('/api/auth/callback', async (req: any, res) => {
   const { code } = req.query;
 
   try {
@@ -112,30 +109,20 @@ app.get('/api/auth/callback', async (req: Request, res: Response) => {
   }
 });
 
-app.get('/api/auth/logout', (req: Request, res: Response) => {
-  if (req.session) {
-    req.session.destroy((err: Error | null) => {
-      if (err) {
-        res.status(500).json({ error: 'Failed to logout' });
-        return;
-      }
-      res.json({ success: true });
-    });
-  } else {
-    res.json({ success: true });
-  }
+app.get('/api/auth/logout', (req: any, res) => {
+  req.session.destroy();
+  res.json({ success: true });
 });
 
 // Activity routes
-app.get('/api/activities', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+app.get('/api/activities', requireAuth, async (req: any, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.session.userId }
     });
 
     if (!user) {
-      res.status(401).json({ error: 'User not found' });
-      return;
+      return res.status(401).json({ error: 'User not found' });
     }
 
     // Check if token needs refresh
@@ -215,7 +202,8 @@ app.get('/api/activities', requireAuth, async (req: Request, res: Response, next
 
     res.json(activities);
   } catch (error) {
-    next(error);
+    console.error('Error fetching activities:', error);
+    res.status(500).json({ error: 'Failed to fetch activities' });
   }
 });
 
@@ -258,13 +246,8 @@ app.get('/api/stats', requireAuth, async (req: any, res) => {
   }
 });
 
-interface StravaUser {
-  id: number;
-  stravaAccessToken: string;
-}
-
 // Helper function to get user from session
-async function getUserFromSession(req: Request): Promise<StravaUser | null> {
+async function getUserFromSession(req: Request): Promise<{ stravaAccessToken: string } | null> {
   const accessToken = req.headers.authorization?.split(' ')[1];
   if (!accessToken) {
     return null;
@@ -277,7 +260,6 @@ async function getUserFromSession(req: Request): Promise<StravaUser | null> {
     });
     
     return {
-      id: userResponse.data.id,
       stravaAccessToken: accessToken
     };
   } catch (error) {
@@ -286,55 +268,168 @@ async function getUserFromSession(req: Request): Promise<StravaUser | null> {
   }
 }
 
-// Helper function to handle rate limits
-async function handleRateLimit(headers: any) {
-  const usage = parseInt(headers['x-ratelimit-usage']?.split(',')[0] || '0');
-  const limit = parseInt(headers['x-ratelimit-limit']?.split(',')[0] || '600');
-  
-  if (usage > limit * 0.8) { // If we're using more than 80% of our rate limit
-    console.log(`[Strava API] Rate limit usage high (${usage}/${limit}). Waiting ${RATE_LIMIT_DELAY}ms...`);
-    await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY));
+// Helper function to fetch activities from Strava with pagination
+async function fetchStravaActivities(accessToken: string, after?: number): Promise<any[]> {
+  let page = 1;
+  let allActivities: any[] = [];
+  let hasMore = true;
+  const PER_PAGE = 200; // Maximum allowed by Strava API
+  const RATE_LIMIT_DELAY = 1000; // 1 second delay between requests
+
+  // If no after parameter is provided (full sync), set it to the beginning of time
+  if (!after) {
+    after = new Date(2000, 0, 1).getTime() / 1000; // Start from year 2000
+    console.log(`[Strava API] Full sync requested, fetching all activities since ${new Date(after * 1000).toISOString()}`);
   }
+
+  while (hasMore) {
+    try {
+      console.log(`[Strava API] Fetching page ${page} of activities...`);
+      
+      // Add delay to avoid rate limiting (except for first request)
+      if (page > 1) {
+        await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY));
+      }
+
+      const params: any = {
+        per_page: PER_PAGE,
+        page: page,
+        after: after
+      };
+
+      console.log(`[Strava API] Requesting activities with params:`, params);
+
+      const response = await axios.get('https://www.strava.com/api/v3/athlete/activities', {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        },
+        params: params
+      });
+
+      const activities = response.data;
+      console.log(`[Strava API] Page ${page} returned ${activities.length} activities`);
+      
+      if (!activities || activities.length === 0) {
+        console.log('[Strava API] No more activities found');
+        hasMore = false;
+        break;
+      }
+
+      // Log the date range of activities received
+      if (activities.length > 0) {
+        const newest = new Date(activities[0].start_date);
+        const oldest = new Date(activities[activities.length - 1].start_date);
+        console.log(`[Strava API] Page ${page} activities range: ${oldest.toISOString()} to ${newest.toISOString()}`);
+      }
+
+      allActivities = [...allActivities, ...activities];
+      console.log(`[Strava API] Total activities fetched so far: ${allActivities.length}`);
+      
+      // Check rate limits from response headers
+      const rateLimit = {
+        limit: parseInt(response.headers['x-ratelimit-limit'] || '100'),
+        usage: parseInt(response.headers['x-ratelimit-usage'] || '0'),
+        reset: parseInt(response.headers['x-ratelimit-reset'] || '900')
+      };
+
+      console.log(`[Strava API] Rate limits - Usage: ${rateLimit.usage}/${rateLimit.limit}, Reset: ${rateLimit.reset}s`);
+
+      // If we're close to the rate limit, add a delay
+      if (rateLimit.usage > rateLimit.limit * 0.8) {
+        const delayMs = Math.max(RATE_LIMIT_DELAY * 2, 2000);
+        console.log(`[Strava API] Approaching rate limit, adding delay of ${delayMs}ms`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+
+      // If we got less than PER_PAGE activities, we've reached the end
+      if (activities.length < PER_PAGE) {
+        console.log('[Strava API] Received less than PER_PAGE activities, ending pagination');
+        hasMore = false;
+        break;
+      }
+
+      page++;
+
+    } catch (error: any) {
+      console.error('[Strava API] Error fetching activities:', error.message);
+      
+      // Handle rate limiting
+      if (error.response?.status === 429) {
+        const waitTime = parseInt(error.response.headers['x-ratelimit-reset'] || '900');
+        console.log(`[Strava API] Rate limited. Waiting ${waitTime} seconds...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
+        continue; // Retry the same page after waiting
+      }
+
+      // For other errors, stop pagination but return what we have so far
+      console.error(`[Strava API] Error on page ${page}:`, error.response?.data || error.message);
+      if (allActivities.length > 0) {
+        console.log(`[Strava API] Returning ${allActivities.length} activities collected before error`);
+        hasMore = false;
+        break;
+      }
+      throw error; // Re-throw if we have no activities
+    }
+  }
+
+  // Sort activities by date (newest first) before returning
+  allActivities.sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+  
+  if (allActivities.length > 0) {
+    const newest = new Date(allActivities[0].start_date);
+    const oldest = new Date(allActivities[allActivities.length - 1].start_date);
+    console.log(`[Strava API] Final activities range: ${oldest.toISOString()} to ${newest.toISOString()}`);
+  }
+
+  console.log(`[Strava API] Successfully fetched all ${allActivities.length} activities`);
+  return allActivities;
 }
 
-// Helper function to fetch activities from Strava
-async function fetchStravaActivities(accessToken: string, after: Date = EPOCH_START, page: number = 1): Promise<any[]> {
+// Update MongoDB cache with new activities
+async function updateMongoCache(userId: string, activities: any[]): Promise<void> {
   try {
-    console.log(`[Strava API] Fetching page ${page} of activities after ${after.toISOString()}`);
+    const collection = db.collection('activities');
     
-    const response = await axios.get('https://www.strava.com/api/v3/athlete/activities', {
-      headers: { 'Authorization': `Bearer ${accessToken}` },
-      params: {
-        after: Math.floor(after.getTime() / 1000),
-        per_page: PER_PAGE,
-        page
+    // Create bulk operations for updating activities
+    const operations = activities.map(activity => ({
+      updateOne: {
+        filter: { 
+          strava_id: activity.id.toString(),
+          user_id: userId
+        },
+        update: { 
+          $set: {
+            ...activity,
+            strava_id: activity.id.toString(),
+            user_id: userId,
+            start_date: new Date(activity.start_date),
+            start_date_local: new Date(activity.start_date_local),
+            last_updated: new Date(),
+            last_strava_sync: new Date()
+          }
+        },
+        upsert: true
       }
-    });
+    }));
 
-    await handleRateLimit(response.headers);
-    
-    return response.data;
-  } catch (error: any) {
-    if (error.response?.status === 429) { // Rate limit exceeded
-      const resetTime = error.response.headers['x-ratelimit-reset'];
-      const waitTime = (parseInt(resetTime) * 1000) - Date.now();
+    if (operations.length > 0) {
+      const result = await collection.bulkWrite(operations);
+      console.log(`[MongoDB] Updated ${result.modifiedCount} activities, inserted ${result.upsertedCount} new activities`);
       
-      console.log(`[Strava API] Rate limit exceeded. Waiting ${waitTime}ms until reset...`);
-      await new Promise(resolve => setTimeout(resolve, waitTime + 1000));
-      
-      return fetchStravaActivities(accessToken, after, page);
+      // Log the date range of activities being cached
+      const dates = activities.map(a => new Date(a.start_date));
+      const newest = new Date(Math.max(...dates.map(d => d.getTime())));
+      const oldest = new Date(Math.min(...dates.map(d => d.getTime())));
+      console.log(`[MongoDB] Cached activities range: ${oldest.toISOString()} to ${newest.toISOString()}`);
     }
+  } catch (error) {
+    console.error('[MongoDB] Error updating cache:', error);
     throw error;
   }
 }
 
-// GET /api/strava/activities - Get all activities with optional force refresh
-const getActivitiesHandler: RequestHandler<
-  ParamsDictionary,
-  any,
-  any,
-  { forceRefresh?: string; after?: string; before?: string }
-> = async (req: Request, res: Response, next: NextFunction) => {
+// Update the activities endpoint
+app.get('/api/strava/activities', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const user = await getUserFromSession(req);
     if (!user) {
@@ -342,66 +437,18 @@ const getActivitiesHandler: RequestHandler<
       return;
     }
 
-    const forceRefresh = req.query.forceRefresh === 'true';
-    const after = req.query.after ? new Date(String(req.query.after)) : EPOCH_START;
-    const before = req.query.before ? new Date(String(req.query.before)) : new Date();
-
-    // Check if we need to refresh data
-    const needsRefresh = forceRefresh || await Activity.needsRefresh(user.id);
-
-    if (needsRefresh) {
-      console.log('[Strava API] Fetching new activities from Strava...');
-      const stravaActivities = await fetchStravaActivities(user.stravaAccessToken, after);
-      
-      // Bulk upsert activities
-      const result = await Activity.bulkUpsertActivities(stravaActivities, user.id);
-      console.log(`[Strava API] Upserted ${result.upsertedCount} activities, modified ${result.modifiedCount} activities`);
-    }
-
-    // Query activities from database with date range
-    const activities = await Activity.find({
-      userId: user.id,
-      start_date: { $gte: after, $lte: before }
-    }).sort({ start_date: -1 });
-
-    // Get metadata
-    const [earliest, latest] = await Promise.all([
-      Activity.getEarliestActivityDate(user.id),
-      Activity.getLatestActivityDate(user.id)
-    ]);
-
-    const metadata = {
-      count: activities.length,
-      dateRange: {
-        earliest: earliest?.toISOString() || null,
-        latest: latest?.toISOString() || null
-      },
-      lastSync: new Date().toISOString()
-    };
-
-    res.json({
-      activities,
-      metadata
-    });
-  } catch (error) {
+    const activities = await fetchStravaActivities(user.stravaAccessToken);
+    res.json(activities);
+  } catch (error: any) {
     next(error);
   }
-};
-
-app.get('/api/strava/activities', getActivitiesHandler);
+});
 
 // Error handling middleware
-const errorHandler = (
-  err: unknown,
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  console.error('Error handling request:', err);
-  res.status(500).json({ error: err instanceof Error ? err.message : 'An unknown error occurred' });
-};
-
-app.use(errorHandler);
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  console.error('Error handling Strava activities:', err);
+  res.status(500).json({ error: err.message });
+});
 
 // Start server
 app.listen(port, () => {

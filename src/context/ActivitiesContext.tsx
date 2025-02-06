@@ -1,39 +1,192 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import axios from 'axios';
-import type { IActivity } from '../models/Activity';
+import { useAuth } from './AuthContext';
 
-export type Activity = IActivity;
-
-interface DateRange {
-  earliest: string | null;
-  latest: string | null;
+export interface Activity {
+  id: number;
+  stravaId: number;
+  type: string;
+  name: string;
+  distance: number;
+  moving_time: number;
+  elapsed_time: number;
+  total_elevation_gain: number;
+  start_date: string;
+  start_date_local: string;
+  timezone: string;
+  average_speed: number;
+  max_speed: number;
+  average_heartrate: number;
+  max_heartrate: number;
+  elev_high: number;
+  elev_low: number;
+  description: string;
+  calories: number;
+  lastUpdated: string;
+  lastStravaSync: string;
+  startLatlng?: [number, number];
+  endLatlng?: [number, number];
+  map?: {
+    polyline: string;
+  };
 }
 
-interface ActivitiesMetadata {
-  count: number;
-  dateRange: DateRange;
-  lastSync: string;
-}
-
-interface ActivitiesContextType {
+export interface ActivitiesContextType {
   activities: Activity[];
-  metadata: ActivitiesMetadata | null;
   isLoading: boolean;
   error: string | null;
-  refreshActivities: (force?: boolean) => Promise<void>;
-  getActivitiesInRange: (after: Date, before: Date) => Promise<void>;
+  refreshActivities: () => Promise<void>;
 }
 
-const defaultMetadata: ActivitiesMetadata = {
-  count: 0,
-  dateRange: {
-    earliest: null,
-    latest: null
-  },
-  lastSync: new Date().toISOString()
-};
-
 const ActivitiesContext = createContext<ActivitiesContextType | undefined>(undefined);
+
+const CACHE_KEY = 'strava_activities_cache';
+const CACHE_METADATA_KEY = 'strava_activities_metadata';
+const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours for full refresh
+const SYNC_CHECK_DURATION = 15 * 60 * 1000;  // 15 minutes for sync check
+
+export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { accessToken } = useAuth();
+
+  const fetchActivities = useCallback(async (force = false) => {
+    if (!accessToken) {
+      setError('No access token available');
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      // Check cache metadata
+      const metadataStr = localStorage.getItem(CACHE_METADATA_KEY);
+      const metadata = metadataStr ? JSON.parse(metadataStr) : {
+        lastFullSync: 0,
+        lastSyncCheck: 0,
+        totalActivities: 0,
+        syncInProgress: false
+      };
+
+      // Prevent multiple syncs from running simultaneously
+      if (metadata.syncInProgress && !force) {
+        console.log('[ActivitiesContext] Sync already in progress, skipping...');
+        return;
+      }
+
+      const now = Date.now();
+      const cachedData = localStorage.getItem(CACHE_KEY);
+      
+      // Determine if we need a full refresh or just a sync check
+      const needsFullRefresh = force || !cachedData || (now - metadata.lastFullSync > CACHE_DURATION);
+      const needsSyncCheck = now - metadata.lastSyncCheck > SYNC_CHECK_DURATION;
+
+      if (!needsFullRefresh && !needsSyncCheck && cachedData) {
+        console.log('[ActivitiesContext] Using cached data');
+        setActivities(JSON.parse(cachedData));
+        setIsLoading(false);
+        return;
+      }
+
+      // Update metadata to indicate sync in progress
+      metadata.syncInProgress = true;
+      localStorage.setItem(CACHE_METADATA_KEY, JSON.stringify(metadata));
+
+      // Fetch from server with appropriate sync type
+      console.log(`[ActivitiesContext] ${needsFullRefresh ? 'Full refresh' : 'Sync check'} requested`);
+      
+      try {
+        // Use the paginated endpoint instead of /api/activities
+        const response = await axios.get('/api/strava/activities', {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          },
+          params: {
+            fullSync: needsFullRefresh
+          }
+        });
+
+        if (!response.data || !Array.isArray(response.data)) {
+          throw new Error('Invalid response from server');
+        }
+
+        // Log the date range of activities received
+        if (response.data.length > 0) {
+          const dates = response.data.map(a => new Date(a.start_date));
+          const newest = new Date(Math.max(...dates.map(d => d.getTime())));
+          const oldest = new Date(Math.min(...dates.map(d => d.getTime())));
+          console.log(`[ActivitiesContext] Received activities range: ${oldest.toISOString()} to ${newest.toISOString()}`);
+          console.log(`[ActivitiesContext] Total activities received: ${response.data.length}`);
+        }
+
+        // Sort activities by date (most recent first)
+        const sortedActivities = response.data.sort((a, b) => 
+          new Date(b.start_date_local).getTime() - new Date(a.start_date_local).getTime()
+        );
+
+        // Update cache and metadata
+        localStorage.setItem(CACHE_KEY, JSON.stringify(sortedActivities));
+        localStorage.setItem(CACHE_METADATA_KEY, JSON.stringify({
+          lastFullSync: needsFullRefresh ? now : metadata.lastFullSync,
+          lastSyncCheck: now,
+          totalActivities: sortedActivities.length,
+          syncInProgress: false
+        }));
+
+        console.log(`[ActivitiesContext] Cache updated with ${sortedActivities.length} activities`);
+        setActivities(sortedActivities);
+
+      } catch (error) {
+        console.error('[ActivitiesContext] Error:', error);
+        throw error; // Re-throw to be caught by outer try-catch
+      } finally {
+        // Ensure sync flag is cleared even if there's an error
+        const currentMetadata = JSON.parse(localStorage.getItem(CACHE_METADATA_KEY) || '{}');
+        currentMetadata.syncInProgress = false;
+        localStorage.setItem(CACHE_METADATA_KEY, JSON.stringify(currentMetadata));
+      }
+
+    } catch (error) {
+      console.error('[ActivitiesContext] Error:', error);
+      setError(error instanceof Error ? error.message : 'Failed to fetch activities');
+      
+      // If API fails, try to use cached data
+      const cachedData = localStorage.getItem(CACHE_KEY);
+      if (cachedData) {
+        console.log('[ActivitiesContext] Using cached data after error');
+        setActivities(JSON.parse(cachedData));
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [accessToken]);
+
+  // Initial fetch - only force refresh if no cache exists
+  useEffect(() => {
+    console.log('[ActivitiesContext] Provider mounted');
+    const cachedData = localStorage.getItem(CACHE_KEY);
+    fetchActivities(!cachedData);
+    return () => {
+      console.log('[ActivitiesContext] Provider unmounted');
+    };
+  }, [fetchActivities]);
+
+  const contextValue = {
+    activities,
+    isLoading,
+    error,
+    refreshActivities: () => fetchActivities(true)
+  };
+
+  return (
+    <ActivitiesContext.Provider value={contextValue}>
+      {children}
+    </ActivitiesContext.Provider>
+  );
+};
 
 export const useActivities = () => {
   const context = useContext(ActivitiesContext);
@@ -41,78 +194,4 @@ export const useActivities = () => {
     throw new Error('useActivities must be used within an ActivitiesProvider');
   }
   return context;
-};
-
-export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [metadata, setMetadata] = useState<ActivitiesMetadata | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchActivities = useCallback(async (params: { forceRefresh?: boolean; after?: Date; before?: Date }) => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const queryParams = new URLSearchParams();
-      
-      if (params.forceRefresh) {
-        queryParams.append('forceRefresh', 'true');
-      }
-      
-      if (params.after) {
-        queryParams.append('after', params.after.toISOString());
-      }
-      
-      if (params.before) {
-        queryParams.append('before', params.before.toISOString());
-      }
-
-      console.log(`[ActivitiesContext] Fetching activities with params:`, params);
-      
-      const response = await axios.get(`/api/strava/activities?${queryParams.toString()}`);
-      
-      setActivities(response.data.activities);
-      setMetadata(response.data.metadata || defaultMetadata);
-      
-      console.log(`[ActivitiesContext] Received ${response.data.activities.length} activities`);
-      if (response.data.metadata?.dateRange) {
-        console.log(`[ActivitiesContext] Date range: ${response.data.metadata.dateRange.earliest} to ${response.data.metadata.dateRange.latest}`);
-      }
-      
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.error || err.message || 'Failed to fetch activities';
-      console.error('[ActivitiesContext] Error:', errorMessage);
-      setError(errorMessage);
-      setActivities([]);
-      setMetadata(null);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const refreshActivities = useCallback(async (force: boolean = false) => {
-    await fetchActivities({ forceRefresh: force });
-  }, [fetchActivities]);
-
-  const getActivitiesInRange = useCallback(async (after: Date, before: Date) => {
-    await fetchActivities({ after, before });
-  }, [fetchActivities]);
-
-  return (
-    <ActivitiesContext.Provider
-      value={{
-        activities,
-        metadata,
-        isLoading,
-        error,
-        refreshActivities,
-        getActivitiesInRange
-      }}
-    >
-      {children}
-    </ActivitiesContext.Provider>
-  );
-};
-
-export default ActivitiesContext; 
+}; 

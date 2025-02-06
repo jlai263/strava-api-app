@@ -1,20 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useActivities } from '../context/ActivitiesContext';
-import type { Activity } from '../context/ActivitiesContext';
+import { useActivities, Activity } from '../context/ActivitiesContext';
 
-interface ActivityCardProps {
-  activity: Activity;
-}
-
-const ActivityCard = ({ activity }: ActivityCardProps) => {
-  const formatDate = (date: Date | string) => {
-    const dateObj = date instanceof Date ? date : new Date(date);
-    return dateObj.toLocaleDateString('en-US', {
+const ActivityCard = ({ activity }: { activity: Activity }) => {
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
-      year: 'numeric',
-      timeZone: 'UTC'
+      year: 'numeric'
     });
   };
 

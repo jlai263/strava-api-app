@@ -1,4 +1,4 @@
-import type { IActivity } from '../models/Activity';
+import { Activity } from '../context/ActivitiesContext';
 
 // Heart rate zones based on % of max HR
 const HR_ZONES = {
@@ -10,7 +10,7 @@ const HR_ZONES = {
 };
 
 // Calculate acute (7-day) and chronic (28-day) training loads
-export const calculateTrainingLoad = (activities: IActivity[]) => {
+export const calculateTrainingLoad = (activities: Activity[]) => {
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const twentyEightDaysAgo = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);
@@ -24,7 +24,7 @@ export const calculateTrainingLoad = (activities: IActivity[]) => {
   );
 
   // Calculate training load using duration and intensity
-  const calculateLoad = (activity: IActivity) => {
+  const calculateLoad = (activity: Activity) => {
     const duration = activity.moving_time / 3600; // Convert to hours
     let intensity = 1.0; // Default intensity
 
@@ -64,7 +64,7 @@ export const calculateTrainingLoad = (activities: IActivity[]) => {
 };
 
 // Calculate time spent in each heart rate zone
-export const calculateZoneDistribution = (activities: IActivity[]) => {
+export const calculateZoneDistribution = (activities: Activity[]) => {
   const zones = {
     zone1: 0, // Recovery (55-65% HR max)
     zone2: 0, // Aerobic (65-75% HR max)

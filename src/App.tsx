@@ -19,25 +19,7 @@ interface Blob {
   radius: number;
 }
 
-interface LoginPageProps {
-  handleStravaConnect: () => Promise<void>;
-  loading: boolean;
-  error: string | null;
-  blobPositions: Blob[];
-  isAnimating: boolean;
-  mousePosition: { x: number; y: number };
-  windowSize: { width: number; height: number };
-}
-
-function LoginPage({ 
-  handleStravaConnect, 
-  loading, 
-  error, 
-  blobPositions, 
-  isAnimating, 
-  mousePosition, 
-  windowSize 
-}: LoginPageProps) {
+function LoginPage({ handleStravaConnect, loading, error, blobPositions, isAnimating, mousePosition, windowSize }) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden bg-gradient-to-br from-gray-900 via-gray-800 to-black">
       {/* Animated background blobs */}
@@ -106,7 +88,7 @@ function LoginPage({
 }
 
 // Protected Route component
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const ProtectedRoute = ({ children }) => {
   const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
   
   if (!isAuthenticated) {
@@ -117,7 +99,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 };
 
 // Protected Layout component to wrap all authenticated routes
-const ProtectedLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const ProtectedLayout = ({ children }) => {
   return (
     <ActivitiesProvider>
       <Navbar />
