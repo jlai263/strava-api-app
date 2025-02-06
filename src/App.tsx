@@ -256,7 +256,8 @@ function App() {
       // First try to check if the API is reachable
       try {
         console.log('Checking API health...');
-        const healthCheck = await fetch('/api/health');
+        const apiUrl = import.meta.env.VITE_API_URL || '';
+        const healthCheck = await fetch(apiUrl + '/api/health');
         if (!healthCheck.ok) {
           throw new Error(`Health check failed with status: ${healthCheck.status}`);
         }
@@ -269,7 +270,8 @@ function App() {
 
       // Make the actual Strava auth request
       console.log('Making Strava auth request...');
-      const response = await fetch('/api/auth/strava', {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const response = await fetch(apiUrl + '/api/auth/strava', {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
