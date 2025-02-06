@@ -308,23 +308,68 @@ apiRouter.get('/strava/activities', async (req, res) => {
             return res.status(401).json({ error: 'No access token provided' });
         }
 
-        // Get activities from Strava
-        console.log('Fetching activities from Strava...');
+        // First, try to get the user's ID from their activities in MongoDB
+        let userId;
+        try {
+            const userResponse = await axios.get('https://www.strava.com/api/v3/athlete', {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            userId = userResponse.data.id;
+        } catch (error) {
+            console.error('Error fetching user data:', error);
+            return res.status(401).json({ error: 'Failed to authenticate with Strava' });
+        }
+
+        // Check if we have recent activities in MongoDB
+        const cacheTimeout = 15 * 60 * 1000; // 15 minutes
+        const recentActivities = await Activity.find({
+            userId,
+            lastUpdated: { $gt: new Date(Date.now() - cacheTimeout) }
+        })
+        .sort({ start_date: -1 })
+        .limit(30);
+
+        if (recentActivities.length > 0) {
+            console.log('Returning cached activities from MongoDB');
+            return res.json(recentActivities);
+        }
+
+        // If no recent cache, fetch from Strava
+        console.log('Fetching fresh activities from Strava...');
         const response = await axios.get('https://www.strava.com/api/v3/athlete/activities', {
-            headers: { 
-                'Authorization': `Bearer ${accessToken}`
-            },
+            headers: { 'Authorization': `Bearer ${accessToken}` },
             params: {
-                per_page: 30,  // Get last 30 activities
+                per_page: 30,
                 page: 1
             }
         });
 
-        console.log('Activities fetched successfully:', response.data.length);
-        res.json(response.data);
+        // Store activities in MongoDB
+        const activities = response.data;
+        console.log(`Storing ${activities.length} activities in MongoDB`);
+
+        const bulkOps = activities.map(activity => ({
+            updateOne: {
+                filter: { stravaId: activity.id },
+                update: {
+                    $set: {
+                        ...activity,
+                        userId,
+                        stravaId: activity.id,
+                        lastUpdated: new Date()
+                    }
+                },
+                upsert: true
+            }
+        }));
+
+        await Activity.bulkWrite(bulkOps);
+        console.log('Activities stored in MongoDB');
+
+        res.json(activities);
         
     } catch (error) {
-        console.error('Error fetching Strava activities:', error.response?.data || error.message);
+        console.error('Error in activities endpoint:', error.response?.data || error.message);
         if (error.response?.status === 401) {
             return res.status(401).json({ 
                 error: 'Authentication failed',
