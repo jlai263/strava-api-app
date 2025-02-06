@@ -3,13 +3,10 @@ builder = "nixpacks"
 buildCommand = "npm run build"
 
 [deploy]
-startCommand = "node server.js"
+startCommand = "npm start"
 healthcheckPath = "/api/health"
-healthcheckTimeout = 500
+healthcheckTimeout = 100
 restartPolicyType = "on_failure"
-healthcheckInterval = 45
-healthcheckMaxRetries = 5
 
 [deploy.envs]
-NODE_ENV = "production"
-PORT = "8080" 
+NODE_ENV = "production" 

@@ -84,16 +84,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = (tokens: any) => {
     console.log('Logging in with tokens');
-    localStorage.setItem('stravaTokens', JSON.stringify(tokens));
+    // Store tokens in localStorage
+    localStorage.setItem('stravaTokens', JSON.stringify({
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_at: tokens.expires_at
+    }));
+    
+    // Set the access token in state
     setAccessToken(tokens.access_token);
     setIsAuthenticated(true);
+    
+    // Set the default Authorization header for all axios requests
     axios.defaults.headers.common['Authorization'] = `Bearer ${tokens.access_token}`;
+    
+    // Store authentication state
+    localStorage.setItem('isAuthenticated', 'true');
+    
+    // Redirect to dashboard
     window.location.href = '/dashboard';
   };
 
   const logout = () => {
     console.log('Logging out');
+    // Clear all auth-related data
     localStorage.removeItem('stravaTokens');
+    localStorage.removeItem('isAuthenticated');
     setAccessToken(null);
     setIsAuthenticated(false);
     delete axios.defaults.headers.common['Authorization'];

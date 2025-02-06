@@ -11,17 +11,16 @@ interface ImportMeta {
 }
 
 declare module '*.svg' {
-  import React = require('react');
-  const SVG: React.FC<React.SVGProps<SVGSVGElement>>;
-  export default SVG;
+  const ReactComponent: React.FunctionComponent<React.SVGAttributes<SVGElement>>;
+  export default ReactComponent;
 }
 
 declare module '*.png' {
-  const value: string;
-  export default value;
+  const pngUrl: string;
+  export default pngUrl;
 }
 
 declare module '*.jpg' {
-  const value: string;
-  export default value;
+  const jpgUrl: string;
+  export default jpgUrl;
 } 

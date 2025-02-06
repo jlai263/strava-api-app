@@ -243,25 +243,53 @@ function App() {
       setError(null);
       console.log('Initiating Strava connection...');
       
-      // @ts-ignore
-      const clientId = __VITE_STRAVA_CLIENT_ID__;
-      // @ts-ignore
-      const redirectUri = __VITE_STRAVA_REDIRECT_URI__;
-      
-      if (!clientId) {
-        throw new Error('Strava Client ID not configured');
-      }
-      
-      if (!redirectUri) {
-        throw new Error('Strava Redirect URI not configured');
+      // Log environment variables (excluding sensitive data)
+      console.log('Environment check:', {
+        clientIdExists: !!import.meta.env.VITE_STRAVA_CLIENT_ID,
+        redirectUriExists: !!import.meta.env.VITE_STRAVA_REDIRECT_URI,
+        apiUrlExists: !!import.meta.env.VITE_API_URL,
+        clientId: import.meta.env.VITE_STRAVA_CLIENT_ID,
+        redirectUri: import.meta.env.VITE_STRAVA_REDIRECT_URI
+      });
+
+      // First try to check if the API is reachable
+      try {
+        const healthCheck = await fetch('/api/health');
+        const healthData = await healthCheck.json();
+        console.log('Health check response:', healthData);
+      } catch (healthError) {
+        console.error('Health check failed:', healthError);
+        throw new Error('API health check failed: ' + (healthError instanceof Error ? healthError.message : String(healthError)));
       }
 
-      // Construct the Strava OAuth URL directly
-      const scope = 'read,activity:read_all,profile:read_all';
-      const authUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${scope}&approval_prompt=force`;
+      // Make the actual Strava auth request
+      console.log('Making Strava auth request...');
+      const response = await fetch('/api/auth/strava', {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log('Auth response status:', response.status);
       
-      console.log('Redirecting to Strava auth URL:', authUrl);
-      window.location.href = authUrl;
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response body:', errorText);
+        throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('Auth response data:', data);
+
+      if (data.url) {
+        console.log('Redirecting to Strava auth URL:', data.url);
+        window.location.href = data.url;
+      } else {
+        throw new Error('No authorization URL received from server');
+      }
+
     } catch (error) {
       console.error('Strava connection error:', error);
       setError(error instanceof Error ? error.message : 'Failed to connect with Strava');
