@@ -8,6 +8,13 @@ healthcheckPath = "/api/health"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 healthcheckInterval = 30
+numReplicas = 1
+healthcheckProtocol = "https"
 
 [deploy.envs]
-NODE_ENV = "production" 
+NODE_ENV = "production"
+RAILWAY_DOCKERFILE_PATH = "Dockerfile"
+PORT = "8080"
+RAILWAY_ENVIRONMENT = "production"
+RAILWAY_PUBLIC_DOMAIN = "strava-api-app-production.up.railway.app"
+NODE_TLS_REJECT_UNAUTHORIZED = "1" 

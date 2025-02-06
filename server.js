@@ -151,7 +151,9 @@ const corsOptions = {
     const allowedOrigins = [
       'http://localhost:3000',
       'http://localhost:8080',
-      'https://strava-api-app-production.up.railway.app'
+      'https://strava-api-app-production.up.railway.app',
+      API_URL,
+      FRONTEND_URL
     ];
     
     if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
