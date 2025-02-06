@@ -95,8 +95,14 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/" replace />;
   }
   
+  return children;
+};
+
+// Protected Layout component to wrap all authenticated routes
+const ProtectedLayout = ({ children }) => {
   return (
     <ActivitiesProvider>
+      <Navbar />
       {children}
     </ActivitiesProvider>
   );
@@ -333,10 +339,9 @@ function App() {
             path="/dashboard" 
             element={
               <ProtectedRoute>
-                <div>
-                  <Navbar />
+                <ProtectedLayout>
                   <Dashboard />
-                </div>
+                </ProtectedLayout>
               </ProtectedRoute>
             } 
           />
@@ -344,10 +349,9 @@ function App() {
             path="/activities" 
             element={
               <ProtectedRoute>
-                <div>
-                  <Navbar />
+                <ProtectedLayout>
                   <Activities />
-                </div>
+                </ProtectedLayout>
               </ProtectedRoute>
             } 
           />
@@ -355,10 +359,9 @@ function App() {
             path="/stats" 
             element={
               <ProtectedRoute>
-                <div>
-                  <Navbar />
+                <ProtectedLayout>
                   <Stats />
-                </div>
+                </ProtectedLayout>
               </ProtectedRoute>
             } 
           />
@@ -366,10 +369,9 @@ function App() {
             path="/coach" 
             element={
               <ProtectedRoute>
-                <div>
-                  <Navbar />
+                <ProtectedLayout>
                   <Coach />
-                </div>
+                </ProtectedLayout>
               </ProtectedRoute>
             } 
           />
@@ -377,10 +379,9 @@ function App() {
             path="/training" 
             element={
               <ProtectedRoute>
-                <div>
-                  <Navbar />
+                <ProtectedLayout>
                   <Training />
-                </div>
+                </ProtectedLayout>
               </ProtectedRoute>
             } 
           />
@@ -388,10 +389,9 @@ function App() {
             path="/goals" 
             element={
               <ProtectedRoute>
-                <div>
-                  <Navbar />
+                <ProtectedLayout>
                   <Goals />
-                </div>
+                </ProtectedLayout>
               </ProtectedRoute>
             } 
           />

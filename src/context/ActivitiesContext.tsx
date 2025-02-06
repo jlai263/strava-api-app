@@ -63,20 +63,31 @@ export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const age = Date.now() - timestamp;
           
           if (age < CACHE_DURATION) {
-            console.log('Using local cache from ActivitiesContext');
+            console.log('[ActivitiesContext] Using local cache, age:', Math.round(age / 1000), 'seconds');
             setActivities(data);
             setLoading(false);
             return;
+          } else {
+            console.log('[ActivitiesContext] Cache expired, age:', Math.round(age / 1000), 'seconds');
           }
+        } else {
+          console.log('[ActivitiesContext] No cache found');
         }
+      } else {
+        console.log('[ActivitiesContext] Force refresh requested');
       }
 
       // Fetch from our server (which handles MongoDB caching)
-      console.log(force ? 'Force refreshing activities' : 'Fetching activities from ActivitiesContext');
+      console.log('[ActivitiesContext] Fetching from server...');
       const response = await axios.get('/api/strava/activities', {
         headers: {
           'Authorization': `Bearer ${accessToken}`
         }
+      });
+
+      console.log('[ActivitiesContext] Server response received:', {
+        status: response.status,
+        dataCount: response.data.length
       });
 
       // Update state and cache
@@ -85,16 +96,17 @@ export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         data: response.data,
         timestamp: Date.now()
       }));
+      console.log('[ActivitiesContext] Cache updated');
 
     } catch (error) {
-      console.error('Error fetching activities:', error);
+      console.error('[ActivitiesContext] Error:', error);
       setError(error instanceof Error ? error.message : 'Failed to fetch activities');
       
       // If API fails, try to use cached data even if expired
       const cachedData = localStorage.getItem(CACHE_KEY);
       if (cachedData) {
         const { data } = JSON.parse(cachedData);
-        console.log('Using expired cache due to API error');
+        console.log('[ActivitiesContext] Using expired cache due to error');
         setActivities(data);
       }
     } finally {
@@ -104,16 +116,22 @@ export const ActivitiesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Initial fetch
   useEffect(() => {
+    console.log('[ActivitiesContext] Provider mounted');
     fetchActivities();
+    return () => {
+      console.log('[ActivitiesContext] Provider unmounted');
+    };
   }, [fetchActivities]);
 
+  const contextValue = {
+    activities,
+    loading,
+    error,
+    refreshActivities: () => fetchActivities(true)
+  };
+
   return (
-    <ActivitiesContext.Provider value={{
-      activities,
-      loading,
-      error,
-      refreshActivities: () => fetchActivities(true)
-    }}>
+    <ActivitiesContext.Provider value={contextValue}>
       {children}
     </ActivitiesContext.Provider>
   );
