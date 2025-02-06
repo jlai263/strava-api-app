@@ -124,12 +124,20 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static('dist'));
+  // Serve static files from the dist directory
+  app.use(express.static(path.join(__dirname, 'dist')));
   
-  // Handle client-side routing
+  // Handle client-side routing by serving index.html for all non-API routes
   app.get('*', (req, res) => {
     if (!req.path.startsWith('/api')) {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    }
+  });
+} else {
+  // In development, redirect non-API requests to the Vite dev server
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+      res.redirect(`http://localhost:${VITE_DEV_SERVER_PORT}${req.path}`);
     }
   });
 }
@@ -488,25 +496,6 @@ apiRouter.get('/health', (req, res) => {
     }
   });
 });
-
-if (isProduction) {
-    // Serve static files from the dist directory
-    app.use(express.static(path.join(__dirname, 'dist')));
-    
-    // Handle all routes by serving index.html
-    app.get('*', (req, res) => {
-        if (!req.path.startsWith('/api')) {
-            res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-        }
-    });
-} else {
-    // In development, only handle API routes
-    app.get('*', (req, res) => {
-        if (!req.path.startsWith('/api')) {
-            res.redirect(`http://localhost:5173${req.path}`);
-        }
-    });
-}
 
 app.listen(port, '0.0.0.0', () => {
     console.log(`Server running on port ${port}`);
