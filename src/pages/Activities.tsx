@@ -1,21 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import axios from 'axios';
-import { useAuth } from '../context/AuthContext';
+import { useActivities, Activity } from '../context/ActivitiesContext';
 
-interface Activity {
-  id: string;
-  name: string;
-  type: string;
-  distance: number;
-  moving_time: number;
-  total_elevation_gain: number;
-  start_date_local: string;
-  average_speed: number;
-  average_heartrate: number;
-}
-
-const ActivityCard: React.FC<{ activity: Activity }> = ({ activity }) => {
+const ActivityCard = ({ activity }: { activity: Activity }) => {
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-US', {
@@ -91,49 +78,12 @@ const ActivityCard: React.FC<{ activity: Activity }> = ({ activity }) => {
 };
 
 const Activities = () => {
-  const { accessToken } = useAuth();
-  const [activities, setActivities] = useState<Activity[]>([]);
+  const { activities, loading, error } = useActivities();
   const [filteredActivities, setFilteredActivities] = useState<Activity[]>([]);
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchActivities = async () => {
-      try {
-        setLoading(true);
-        console.log('Fetching activities...');
-        const response = await axios.get('/api/strava/activities', {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        });
-        console.log('Activities received:', response.data.length);
-        
-        // Filter for running activities only (including treadmill runs)
-        const runningActivities = response.data.filter((activity: Activity) => 
-          activity.type.toLowerCase().includes('run')
-        );
-        
-        // Sort activities by date in descending order (most recent first)
-        const sortedActivities = runningActivities.sort((a: Activity, b: Activity) => 
-          new Date(b.start_date_local).getTime() - new Date(a.start_date_local).getTime()
-        );
-        
-        setActivities(sortedActivities);
-        setFilteredActivities(sortedActivities);
-      } catch (error) {
-        console.error('Error fetching activities:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (accessToken) {
-      fetchActivities();
-    }
-  }, [accessToken]);
-
+  // Filter activities when filter or search changes
   useEffect(() => {
     let filtered = activities;
 
@@ -163,49 +113,57 @@ const Activities = () => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="page-container flex items-center justify-center">
+        <div className="text-center text-red-500">
+          <p>{error}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page-container">
-      <div className="content-container">
-        {/* Filters */}
-        <div className="flex flex-col space-y-4 mb-6 sm:mb-8">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {['all', 'run', 'ride', 'swim'].map(type => (
-              <motion.button
-                key={type}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setFilter(type)}
-                className={`px-3 py-2 sm:px-4 sm:py-2 rounded-lg font-medium text-sm sm:text-base ${
-                  filter === type
-                    ? 'bg-gradient-to-r from-orange-500 to-pink-500 text-white'
-                    : 'glass text-gray-300 hover:bg-white/10'
-                }`}
-              >
-                {type.charAt(0).toUpperCase() + type.slice(1)}
-              </motion.button>
-            ))}
-          </div>
-          
-          <input
-            type="text"
-            placeholder="Search activities..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-4 py-2 rounded-lg glass text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
-          />
+      {/* Filters */}
+      <div className="flex flex-col space-y-4 mb-6 sm:mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {['all', 'run', 'ride', 'swim'].map(type => (
+            <motion.button
+              key={type}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setFilter(type)}
+              className={`px-3 py-2 sm:px-4 sm:py-2 rounded-lg font-medium text-sm sm:text-base ${
+                filter === type
+                  ? 'bg-gradient-to-r from-orange-500 to-pink-500 text-white'
+                  : 'glass text-gray-300 hover:bg-white/10'
+              }`}
+            >
+              {type.charAt(0).toUpperCase() + type.slice(1)}
+            </motion.button>
+          ))}
         </div>
-
-        {/* Activities List */}
-        <motion.div layout className="space-y-4">
-          <AnimatePresence>
-            {filteredActivities.map(activity => (
-              <ActivityCard key={activity.id} activity={activity} />
-            ))}
-          </AnimatePresence>
-        </motion.div>
+        
+        <input
+          type="text"
+          placeholder="Search activities..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full px-4 py-2 rounded-lg glass text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
+        />
       </div>
+
+      {/* Activities List */}
+      <motion.div layout className="space-y-4">
+        <AnimatePresence>
+          {filteredActivities.map(activity => (
+            <ActivityCard key={activity.stravaId} activity={activity} />
+          ))}
+        </AnimatePresence>
+      </motion.div>
     </div>
   );
-};
+}
 
 export default Activities; 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import axios from 'axios';
+import { useActivities, Activity } from '../context/ActivitiesContext';
+import { calculateTrainingLoad, calculateZoneDistribution } from '../utils/trainingMetrics';
 import { Line, Doughnut, Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -15,7 +16,6 @@ import {
   Filler,
   ArcElement
 } from 'chart.js';
-import { useAuth } from '../context/AuthContext';
 
 ChartJS.register(
   CategoryScale,
@@ -30,199 +30,98 @@ ChartJS.register(
   ArcElement
 );
 
-interface Activity {
-  id: string;
-  distance: number;
-  moving_time: number;
-  total_elevation_gain: number;
-  start_date_local: string;
-  type: string;
-  average_heartrate: number;
-}
-
-interface TrainingLoad {
-  acute: number;
-  chronic: number;
-  ratio: number;
-  date: string;
-}
-
-interface ZoneDistribution {
-  zone1: number;
-  zone2: number;
-  zone3: number;
-  zone4: number;
-  zone5: number;
-}
-
 const Coach = () => {
-  const { accessToken } = useAuth();
-  const [loading, setLoading] = useState(false);
+  const { activities, loading, error } = useActivities();
   const [analysis, setAnalysis] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [trainingLoads, setTrainingLoads] = useState<TrainingLoad[]>([]);
-  const [zoneDistribution, setZoneDistribution] = useState<ZoneDistribution>({
+  const [trainingLoads, setTrainingLoads] = useState({
+    acute: 0,
+    chronic: 0,
+    ratio: 0
+  });
+  const [zoneDistribution, setZoneDistribution] = useState({
     zone1: 0,
     zone2: 0,
     zone3: 0,
     zone4: 0,
     zone5: 0
   });
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
-  // Calculate training load from activities
-  const calculateTrainingLoad = (activities: Activity[]) => {
-    const loads: TrainingLoad[] = [];
-    const now = new Date();
-    const twoWeeksAgo = new Date(now);
-    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
-
-    // Sort activities by date
-    const sortedActivities = [...activities]
-      .filter(activity => 
-        activity.type === 'Run' && // Only include runs
-        new Date(activity.start_date_local) >= twoWeeksAgo
-      )
-      .sort((a, b) => new Date(a.start_date_local).getTime() - new Date(b.start_date_local).getTime());
-
-    // Create array of dates for the last 14 days
-    for (let i = 13; i >= 0; i--) {
-      const date = new Date(now);
-      date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
-
-      // Find activities for this day
-      const dayActivities = sortedActivities.filter(
-        activity => activity.start_date_local.split('T')[0] === dateStr
-      );
-
-      // Calculate acute (daily) load
-      const acute = dayActivities.reduce((sum, activity) => {
-        // Training Impulse (TRIMP) calculation
-        const duration = activity.moving_time / 3600; // hours
-        const intensity = activity.average_heartrate 
-          ? (activity.average_heartrate - 60) / (180 - 60) // Normalize HR between rest (60) and max (180)
-          : 0.75; // Default intensity if no HR data
-        return sum + (duration * intensity * 100); // Scale for readability
-      }, 0);
-
-      // Get last 7 days of activities for chronic load
-      const sevenDaysAgo = new Date(date);
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      
-      const last7DaysActivities = sortedActivities.filter(activity => {
-        const activityDate = new Date(activity.start_date_local);
-        return activityDate >= sevenDaysAgo && activityDate <= date;
-      });
-
-      // Calculate chronic (7-day average) load
-      const chronic = last7DaysActivities.reduce((sum, activity) => {
-        const duration = activity.moving_time / 3600;
-        const intensity = activity.average_heartrate 
-          ? (activity.average_heartrate - 60) / (180 - 60)
-          : 0.75;
-        return sum + (duration * intensity * 100 / 7); // Daily average
-      }, 0);
-
-      loads.push({
-        date: dateStr,
-        acute: Math.round(acute),
-        chronic: Math.round(chronic),
-        ratio: chronic > 0 ? Number((acute / chronic).toFixed(2)) : 0
-      });
-    }
-
-    return loads;
-  };
-
-  // Calculate zone distribution from activities
-  const calculateZoneDistribution = (activities: Activity[]) => {
-    const zones = { zone1: 0, zone2: 0, zone3: 0, zone4: 0, zone5: 0 };
-    let totalTime = 0;
-
-    // Filter for running activities only
-    const runActivities = activities.filter(activity => activity.type === 'Run');
-
-    runActivities.forEach(activity => {
-      if (!activity.average_heartrate) return;
-
-      const duration = activity.moving_time / 60; // minutes
-      totalTime += duration;
-
-      // Using standard heart rate zones based on max HR of 180
-      const maxHR = 180;
-      const hr = activity.average_heartrate;
-      
-      // Zone calculations based on % of max HR
-      if (hr <= maxHR * 0.6) zones.zone1 += duration;         // < 60% HRmax
-      else if (hr <= maxHR * 0.7) zones.zone2 += duration;    // 60-70% HRmax
-      else if (hr <= maxHR * 0.8) zones.zone3 += duration;    // 70-80% HRmax
-      else if (hr <= maxHR * 0.9) zones.zone4 += duration;    // 80-90% HRmax
-      else zones.zone5 += duration;                           // > 90% HRmax
-    });
-
-    // Convert to percentages
-    if (totalTime > 0) {
-      return {
-        zone1: Math.round((zones.zone1 / totalTime) * 100),
-        zone2: Math.round((zones.zone2 / totalTime) * 100),
-        zone3: Math.round((zones.zone3 / totalTime) * 100),
-        zone4: Math.round((zones.zone4 / totalTime) * 100),
-        zone5: Math.round((zones.zone5 / totalTime) * 100)
-      };
-    }
-
-    return { zone1: 0, zone2: 0, zone3: 0, zone4: 0, zone5: 0 };
-  };
-
-  // Fetch activities and calculate metrics
+  // Calculate metrics when activities change
   useEffect(() => {
-    const fetchActivities = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        console.log('Fetching activities...');
-        const response = await axios.get('/api/strava/activities', {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        });
-        const activitiesData = response.data;
-        console.log('Activities received:', activitiesData.length);
-        
-        // Filter for running activities only
-        const runningActivities = activitiesData.filter(activity => activity.type === 'Run');
-        setActivities(runningActivities);
+    if (activities.length > 0) {
+      // Filter for running activities only
+      const runningActivities = activities.filter(activity => activity.type === 'Run');
+      
+      if (runningActivities.length > 0) {
+        const loads = calculateTrainingLoad(runningActivities);
+        const zones = calculateZoneDistribution(runningActivities);
 
-        // Calculate metrics only if we have running activities
-        if (runningActivities.length > 0) {
-          const loads = calculateTrainingLoad(runningActivities);
-          const zones = calculateZoneDistribution(runningActivities);
-
-          setTrainingLoads(loads);
-          setZoneDistribution(zones);
-        } else {
-          setError('No running activities found in the data.');
-        }
-      } catch (error) {
-        console.error('Error fetching activities:', error);
-        setError('Failed to load activities. Please try again later.');
-      } finally {
-        setLoading(false);
+        setTrainingLoads(loads);
+        setZoneDistribution(zones);
       }
-    };
-
-    if (accessToken) {
-      fetchActivities();
     }
-  }, [accessToken]);
+  }, [activities]);
+
+  const getAnalysis = async () => {
+    try {
+      setAnalyzing(true);
+      setAnalysisError(null);
+      
+      const response = await fetch('/api/ai/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          activities,
+          trainingLoad: trainingLoads,
+          zoneDistribution
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get AI analysis');
+      }
+
+      const data = await response.json();
+      setAnalysis(data.choices[0].message.content);
+    } catch (error) {
+      console.error('Analysis error:', error);
+      setAnalysisError('Failed to get AI analysis. Please try again later.');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="page-container flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-orange-500 mb-4"></div>
+          <p className="text-gray-400">Loading activities...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="page-container flex items-center justify-center">
+        <div className="text-center text-red-500">
+          <p>{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   const trainingLoadData = {
-    labels: trainingLoads.map(load => load.date),
+    labels: Object.keys(trainingLoads),
     datasets: [
       {
         label: 'Acute Load (Daily)',
-        data: trainingLoads.map(load => load.acute),
+        data: Object.values(trainingLoads),
         borderColor: '#f97316',
         backgroundColor: 'rgba(249, 115, 22, 0.1)',
         fill: true,
@@ -230,7 +129,7 @@ const Coach = () => {
       },
       {
         label: 'Chronic Load (Weekly)',
-        data: trainingLoads.map(load => load.chronic),
+        data: Object.values(trainingLoads),
         borderColor: '#06b6d4',
         backgroundColor: 'rgba(6, 182, 212, 0.1)',
         fill: true,
@@ -248,13 +147,7 @@ const Coach = () => {
       'Zone 5 - VO2 Max (90-100% HRmax)'
     ],
     datasets: [{
-      data: [
-        zoneDistribution.zone1,
-        zoneDistribution.zone2,
-        zoneDistribution.zone3,
-        zoneDistribution.zone4,
-        zoneDistribution.zone5
-      ],
+      data: Object.values(zoneDistribution),
       backgroundColor: [
         '#22c55e', // Green for Zone 1
         '#3b82f6', // Blue for Zone 2
@@ -314,75 +207,6 @@ const Coach = () => {
     }
   };
 
-  const requestAnalysis = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Check if we have the required data
-      if (!activities || activities.length === 0) {
-        setError('No activities available for analysis');
-        return;
-      }
-
-      if (!trainingLoads || trainingLoads.length === 0) {
-        setError('No training load data available for analysis');
-        return;
-      }
-
-      // Get the current training load
-      const currentLoad = trainingLoads[trainingLoads.length - 1];
-
-      // Ensure we have valid zone distribution data
-      const validZoneDistribution = {
-        zone1: zoneDistribution?.zone1 || 0,
-        zone2: zoneDistribution?.zone2 || 0,
-        zone3: zoneDistribution?.zone3 || 0,
-        zone4: zoneDistribution?.zone4 || 0,
-        zone5: zoneDistribution?.zone5 || 0,
-      };
-
-      // Format activities data, ensuring all required fields are present
-      const formattedActivities = activities.map(activity => ({
-        date: activity.start_date_local,
-        distance: activity.distance || 0,
-        duration: activity.moving_time || 0,
-        type: activity.type,
-        heartrate: activity.average_heartrate || null
-      }));
-
-      const analysisData = {
-        activities: formattedActivities,
-        trainingLoad: {
-          acute: currentLoad.acute || 0,
-          chronic: currentLoad.chronic || 0,
-          ratio: currentLoad.ratio || 0
-        },
-        zoneDistribution: validZoneDistribution
-      };
-
-      console.log('Sending analysis request with data:', analysisData);
-
-      const response = await axios.post('/api/ai/analyze', analysisData);
-      
-      if (response.data?.choices?.[0]?.message?.content) {
-        setAnalysis(response.data.choices[0].message.content);
-      } else {
-        setAnalysis(response.data.content || response.data);
-      }
-    } catch (error) {
-      console.error('Failed to get AI analysis:', error);
-      if (axios.isAxiosError(error)) {
-        const errorMessage = error.response?.data?.error || error.message;
-        setError(`Failed to get AI analysis: ${errorMessage}`);
-      } else {
-        setError('Failed to get AI analysis. Please try again later.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="page-container">
       <div className="content-container">
@@ -392,17 +216,17 @@ const Coach = () => {
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={requestAnalysis}
-            disabled={loading}
+            onClick={getAnalysis}
+            disabled={analyzing}
             className="px-4 py-2 bg-gradient-to-r from-orange-500 to-pink-500 text-white rounded-lg hover:from-orange-600 hover:to-pink-600 disabled:opacity-50"
           >
-            {loading ? 'Analyzing...' : 'Get Training Analysis'}
+            {analyzing ? 'Analyzing...' : 'Get Training Analysis'}
           </motion.button>
         </div>
 
-        {error && (
+        {analysisError && (
           <div className="mb-8 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200">
-            {error}
+            {analysisError}
           </div>
         )}
 
@@ -422,25 +246,21 @@ const Coach = () => {
               <div className="text-center">
                 <p className="text-gray-400 text-sm">Acute Load</p>
                 <p className="text-xl font-semibold text-white">
-                  {Math.round(trainingLoads[trainingLoads.length - 1]?.acute || 0)}
+                  {Math.round(trainingLoads.acute)}
                 </p>
               </div>
               <div className="text-center">
                 <p className="text-gray-400 text-sm">Chronic Load</p>
                 <p className="text-xl font-semibold text-white">
-                  {Math.round(trainingLoads[trainingLoads.length - 1]?.chronic || 0)}
+                  {Math.round(trainingLoads.chronic)}
                 </p>
               </div>
               <div className="text-center">
                 <p className="text-gray-400 text-sm">A:C Ratio</p>
                 <p className={`text-xl font-semibold ${
-                  (trainingLoads[trainingLoads.length - 1]?.ratio || 0) > 1.5 
-                    ? 'text-red-500' 
-                    : (trainingLoads[trainingLoads.length - 1]?.ratio || 0) < 0.8
-                    ? 'text-yellow-500'
-                    : 'text-green-500'
+                  trainingLoads.ratio > 1.5 ? 'text-red-500' : trainingLoads.ratio < 0.8 ? 'text-yellow-500' : 'text-green-500'
                 }`}>
-                  {(trainingLoads[trainingLoads.length - 1]?.ratio || 0).toFixed(2)}
+                  {trainingLoads.ratio.toFixed(2)}
                 </p>
               </div>
             </div>

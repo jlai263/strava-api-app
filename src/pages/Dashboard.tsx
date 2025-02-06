@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Line } from 'react-chartjs-2';
-import axios from 'axios';
+import { useActivities, Activity } from '../context/ActivitiesContext';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -13,7 +13,6 @@ import {
   Legend,
   Filler
 } from 'chart.js';
-import { useAuth } from '../context/AuthContext';
 
 ChartJS.register(
   CategoryScale,
@@ -25,16 +24,6 @@ ChartJS.register(
   Legend,
   Filler
 );
-
-interface Activity {
-  id: string;
-  name: string;
-  distance: number;
-  moving_time: number;
-  total_elevation_gain: number;
-  start_date_local: string;
-  type: string;
-}
 
 interface Stats {
   totalDistance: number;
@@ -169,61 +158,32 @@ const RecentActivities = ({ activities }: { activities: Activity[] }) => {
 };
 
 const Dashboard = () => {
-  const { accessToken } = useAuth();
-  const [activities, setActivities] = useState<Activity[]>([]);
+  const { activities, loading, error } = useActivities();
   const [stats, setStats] = useState<Stats>({
     totalDistance: 0,
     totalTime: 0,
     totalElevation: 0,
     activitiesCount: 0
   });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
+  // Only calculate stats when activities change
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        console.log('Fetching activities...');
-        
-        // Add authorization header
-        const response = await axios.get('/api/strava/activities', {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        });
-        
-        console.log('Activities received:', response.data.length);
-        const activitiesData = response.data;
-        setActivities(activitiesData);
-        
-        // Calculate stats
-        const stats = activitiesData.reduce((acc: Stats, activity: Activity) => ({
-          totalDistance: acc.totalDistance + activity.distance,
-          totalTime: acc.totalTime + activity.moving_time,
-          totalElevation: acc.totalElevation + activity.total_elevation_gain,
-          activitiesCount: acc.activitiesCount + 1
-        }), {
-          totalDistance: 0,
-          totalTime: 0,
-          totalElevation: 0,
-          activitiesCount: 0
-        });
-        
-        setStats(stats);
-      } catch (error) {
-        console.error('Error fetching activities:', error);
-        setError('Failed to load activities. Please try again later.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    if (accessToken) {
-      fetchData();
+    if (activities.length > 0) {
+      const newStats = activities.reduce((acc: Stats, activity: Activity) => ({
+        totalDistance: acc.totalDistance + activity.distance,
+        totalTime: acc.totalTime + activity.moving_time,
+        totalElevation: acc.totalElevation + activity.total_elevation_gain,
+        activitiesCount: acc.activitiesCount + 1
+      }), {
+        totalDistance: 0,
+        totalTime: 0,
+        totalElevation: 0,
+        activitiesCount: 0
+      });
+      
+      setStats(newStats);
     }
-  }, [accessToken]);
+  }, [activities]);
 
   // Background blobs
   const blobs = [
@@ -237,7 +197,7 @@ const Dashboard = () => {
       <div className="page-container flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-orange-500 mb-4"></div>
-          <p className="text-gray-400">Loading your activities...</p>
+          <p className="text-gray-400">Loading dashboard...</p>
         </div>
       </div>
     );
@@ -246,15 +206,8 @@ const Dashboard = () => {
   if (error) {
     return (
       <div className="page-container flex items-center justify-center">
-        <div className="text-center max-w-md">
-          <div className="text-red-500 text-xl mb-4">⚠️</div>
-          <p className="text-red-400 mb-4">{error}</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="px-4 py-2 bg-gradient-to-r from-orange-500 to-pink-500 text-white rounded-lg"
-          >
-            Try Again
-          </button>
+        <div className="text-center text-red-500">
+          <p>{error}</p>
         </div>
       </div>
     );

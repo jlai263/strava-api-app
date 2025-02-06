@@ -13,7 +13,7 @@ import {
   Filler
 } from 'chart.js';
 import { Line, Bar } from 'react-chartjs-2';
-import axios from 'axios';
+import { useActivities, Activity } from '../context/ActivitiesContext';
 
 ChartJS.register(
   CategoryScale,
@@ -27,41 +27,9 @@ ChartJS.register(
   Filler
 );
 
-interface Activity {
-  id: string;
-  distance: number;
-  moving_time: number;
-  total_elevation_gain: number;
-  start_date_local: string;
-  type: string;
-  average_heartrate: number;
-}
-
 const Stats = () => {
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'year'>('week');
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchActivities = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        console.log('Fetching activities...');
-        const response = await axios.get('/api/strava/activities');
-        console.log('Activities received:', response.data.length);
-        setActivities(response.data);
-      } catch (error) {
-        console.error('Error fetching stats:', error);
-        setError('Failed to load statistics. Please try again later.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchActivities();
-  }, []);
+  const { activities, loading, error } = useActivities();
 
   const filterActivitiesByTimeRange = (activities: Activity[]) => {
     const now = new Date();
@@ -243,19 +211,14 @@ const Stats = () => {
   if (error) {
     return (
       <div className="page-container flex items-center justify-center">
-        <div className="text-center max-w-md">
-          <div className="text-red-500 text-xl mb-4">⚠️</div>
-          <p className="text-red-400 mb-4">{error}</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="px-4 py-2 bg-gradient-to-r from-orange-500 to-pink-500 text-white rounded-lg"
-          >
-            Try Again
-          </button>
+        <div className="text-center text-red-500">
+          <p>{error}</p>
         </div>
       </div>
     );
   }
+
+  const filteredActivities = filterActivitiesByTimeRange(activities);
 
   return (
     <div className="page-container">
