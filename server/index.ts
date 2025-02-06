@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
 import session from 'express-session';
 import axios from 'axios';
@@ -246,6 +246,28 @@ app.get('/api/stats', requireAuth, async (req: any, res) => {
   }
 });
 
+// Helper function to get user from session
+async function getUserFromSession(req: Request): Promise<{ stravaAccessToken: string } | null> {
+  const accessToken = req.headers.authorization?.split(' ')[1];
+  if (!accessToken) {
+    return null;
+  }
+  
+  try {
+    // Verify the token is valid by making a request to Strava
+    const userResponse = await axios.get('https://www.strava.com/api/v3/athlete', {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    
+    return {
+      stravaAccessToken: accessToken
+    };
+  } catch (error) {
+    console.error('Error verifying Strava token:', error);
+    return null;
+  }
+}
+
 // Helper function to fetch activities from Strava with pagination
 async function fetchStravaActivities(accessToken: string, after?: number): Promise<any[]> {
   let page = 1;
@@ -253,6 +275,12 @@ async function fetchStravaActivities(accessToken: string, after?: number): Promi
   let hasMore = true;
   const PER_PAGE = 200; // Maximum allowed by Strava API
   const RATE_LIMIT_DELAY = 1000; // 1 second delay between requests
+
+  // If no after parameter is provided (full sync), set it to the beginning of time
+  if (!after) {
+    after = new Date(2000, 0, 1).getTime() / 1000; // Start from year 2000
+    console.log(`[Strava API] Full sync requested, fetching all activities since ${new Date(after * 1000).toISOString()}`);
+  }
 
   while (hasMore) {
     try {
@@ -263,17 +291,13 @@ async function fetchStravaActivities(accessToken: string, after?: number): Promi
         await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY));
       }
 
-      // Build params object
       const params: any = {
         per_page: PER_PAGE,
-        page: page
+        page: page,
+        after: after
       };
 
-      // Only add after parameter if it's a valid timestamp
-      if (after && after > 0) {
-        console.log(`[Strava API] Including activities after timestamp: ${new Date(after * 1000).toISOString()}`);
-        params.after = after;
-      }
+      console.log(`[Strava API] Requesting activities with params:`, params);
 
       const response = await axios.get('https://www.strava.com/api/v3/athlete/activities', {
         headers: {
@@ -398,7 +422,6 @@ async function updateMongoCache(userId: string, activities: any[]): Promise<void
       const oldest = new Date(Math.min(...dates.map(d => d.getTime())));
       console.log(`[MongoDB] Cached activities range: ${oldest.toISOString()} to ${newest.toISOString()}`);
     }
-
   } catch (error) {
     console.error('[MongoDB] Error updating cache:', error);
     throw error;
@@ -406,71 +429,28 @@ async function updateMongoCache(userId: string, activities: any[]): Promise<void
 }
 
 // Update the activities endpoint
-app.get('/api/strava/activities', async (req: Request, res: Response): Promise<void> => {
-  const accessToken = req.headers.authorization?.split(' ')[1];
-  
-  if (!accessToken) {
-    res.status(401).json({ error: 'Unauthorized - No access token provided' });
-    return;
-  }
-
+app.get('/api/strava/activities', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // First get the user's Strava ID
-    const userResponse = await axios.get('https://www.strava.com/api/v3/athlete', {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
-    const userId = userResponse.data.id.toString();
-    const fullSync = req.query.fullSync === 'true';
-
-    console.log(`[Server] Fetching activities for user ${userId} (fullSync: ${fullSync})`);
-    
-    // Get the last sync time from MongoDB
-    const collection = db.collection('activities');
-    const lastActivity = await collection
-      .find({ user_id: userId })
-      .sort({ start_date: -1 })
-      .limit(1)
-      .toArray();
-
-    let after: number | undefined;
-    if (!fullSync && lastActivity.length > 0) {
-      after = Math.floor(new Date(lastActivity[0].start_date).getTime() / 1000);
-      console.log(`[Server] Fetching activities after ${new Date(after * 1000).toISOString()}`);
+    const user = await getUserFromSession(req);
+    if (!user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
     }
 
-    // Fetch activities from Strava with pagination
-    console.log('[Server] Starting paginated fetch from Strava API...');
-    const activities = await fetchStravaActivities(accessToken, after);
-    console.log(`[Server] Retrieved ${activities.length} total activities from Strava`);
-
-    // Update MongoDB cache
-    await updateMongoCache(userId, activities);
-
-    // Return all activities from MongoDB (including any that were just cached)
-    const allActivities = await collection
-      .find({ user_id: userId })
-      .sort({ start_date: -1 })
-      .toArray();
-
-    console.log(`[Server] Returning ${allActivities.length} activities to client`);
-    res.json(allActivities);
-
+    const activities = await fetchStravaActivities(user.stravaAccessToken);
+    res.json(activities);
   } catch (error: any) {
-    console.error('[Server] Error:', error);
-    if (error.response?.status === 401) {
-      res.status(401).json({ 
-        error: 'Unauthorized - Invalid or expired token',
-        details: error.response?.data || error.message
-      });
-    } else {
-      res.status(500).json({ 
-        error: 'Failed to fetch activities',
-        details: error.message
-      });
-    }
+    next(error);
   }
+});
+
+// Error handling middleware
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  console.error('Error handling Strava activities:', err);
+  res.status(500).json({ error: err.message });
 });
 
 // Start server
 app.listen(port, () => {
- 
+  console.log(`Server is running on port ${port}`);
+}); 
