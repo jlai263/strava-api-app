@@ -155,36 +155,28 @@ const activitiesCache = {
 
 // Endpoint to initiate Strava OAuth
 apiRouter.get('/auth/strava', (req, res) => {
-    console.log('Auth endpoint hit');
-    try {
-        const clientId = process.env.STRAVA_CLIENT_ID;
-        if (!clientId) {
-            throw new Error('STRAVA_CLIENT_ID not configured');
-        }
+  try {
+    console.log('Initiating Strava auth...');
+    const clientId = process.env.STRAVA_CLIENT_ID;
+    const redirectUri = process.env.NODE_ENV === 'production'
+      ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/api/strava/callback`
+      : process.env.STRAVA_REDIRECT_URI;
 
-        // Get the current domain for the redirect URI
-        const currentDomain = process.env.NODE_ENV === 'production'
-            ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
-            : 'http://localhost:8080';
-            
-        // Construct the redirect URI
-        const redirectUri = `${currentDomain}/api/strava/callback`;
-        
-        console.log('Using redirect URI:', redirectUri);
-
-        const scope = 'read,activity:read_all,profile:read_all';
-        const authUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${scope}`;
-        
-        console.log('Generated Strava auth URL:', authUrl);
-        res.json({ authUrl });
-    } catch (error) {
-        console.error('Strava auth error:', error);
-        res.status(500).json({ 
-            error: 'Failed to initiate Strava auth',
-            details: error.message,
-            timestamp: new Date().toISOString()
-        });
+    if (!clientId) {
+      console.error('Missing STRAVA_CLIENT_ID');
+      return res.status(500).json({ error: 'Strava client ID not configured' });
     }
+
+    console.log('Using redirect URI:', redirectUri);
+    const scope = 'read,activity:read_all,profile:read_all';
+    const authUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${scope}&approval_prompt=force`;
+    
+    console.log('Generated auth URL:', authUrl);
+    res.json({ authUrl });
+  } catch (error) {
+    console.error('Error in /api/auth/strava:', error);
+    res.status(500).json({ error: 'Failed to initiate Strava authentication' });
+  }
 });
 
 // Mock auth endpoint
@@ -457,50 +449,41 @@ Please provide a detailed analysis including:
     }
 });
 
-// Strava callback handler
+// Strava OAuth callback endpoint
 apiRouter.get('/strava/callback', async (req, res) => {
-    try {
-        const { code } = req.query;
-        if (!code) {
-            return res.status(400).json({ error: 'No authorization code provided' });
-        }
+  try {
+    console.log('Strava callback received:', req.query);
+    const { code, error } = req.query;
 
-        const tokenResponse = await axios.post('https://www.strava.com/oauth/token', {
-            client_id: process.env.STRAVA_CLIENT_ID,
-            client_secret: process.env.STRAVA_CLIENT_SECRET,
-            code,
-            grant_type: 'authorization_code'
-        });
-
-        const { athlete, access_token, refresh_token, expires_at } = tokenResponse.data;
-        
-        await User.findOneAndUpdate(
-            { stravaId: athlete.id.toString() },
-            {
-                stravaId: athlete.id.toString(),
-                accessToken: access_token,
-                refreshToken: refresh_token,
-                expiresAt: new Date(expires_at * 1000),
-                profile: {
-                    firstName: athlete.firstname,
-                    lastName: athlete.lastname,
-                    avatar: athlete.profile
-                }
-            },
-            { upsert: true, new: true }
-        );
-
-        // Use environment-specific URL
-        const redirectUrl = new URL(`${FRONTEND_URL}/dashboard`);
-        redirectUrl.searchParams.set('access_token', access_token);
-        redirectUrl.searchParams.set('refresh_token', refresh_token);
-        redirectUrl.searchParams.set('expires_at', expires_at);
-        
-        res.redirect(redirectUrl.toString());
-    } catch (error) {
-        console.error('Callback error:', error.response?.data || error.message);
-        res.redirect(`${FRONTEND_URL}/error?message=${encodeURIComponent('Failed to authenticate with Strava')}`);
+    if (error) {
+      console.error('Strava auth error:', error);
+      return res.redirect('/?error=' + encodeURIComponent(error));
     }
+
+    if (!code) {
+      console.error('No code received from Strava');
+      return res.redirect('/?error=no_code');
+    }
+
+    // Exchange code for token
+    const tokenResponse = await axios.post('https://www.strava.com/oauth/token', {
+      client_id: process.env.STRAVA_CLIENT_ID,
+      client_secret: process.env.STRAVA_CLIENT_SECRET,
+      code,
+      grant_type: 'authorization_code'
+    });
+
+    console.log('Token exchange successful');
+
+    // Store tokens in localStorage (client will read these from the URL)
+    const redirectUrl = `/?access_token=${tokenResponse.data.access_token}&refresh_token=${tokenResponse.data.refresh_token}&expires_at=${tokenResponse.data.expires_at}`;
+    
+    console.log('Redirecting to:', redirectUrl);
+    res.redirect(redirectUrl);
+  } catch (error) {
+    console.error('Error in Strava callback:', error);
+    res.redirect('/?error=' + encodeURIComponent('Failed to complete authentication'));
+  }
 });
 
 if (isProduction) {

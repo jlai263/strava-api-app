@@ -241,45 +241,29 @@ function App() {
     try {
       setLoading(true);
       setError(null);
+      console.log('Initiating Strava connection...');
+      
       const response = await fetch('/api/auth/strava');
       if (!response.ok) {
         throw new Error(`Failed to connect to Strava: ${response.statusText}`);
       }
+      
       const data = await response.json();
+      console.log('Received auth URL response');
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
       
       if (data.authUrl) {
-        if (data.authUrl === '/api/mock-auth') {
-          // Handle mock auth directly
-          const mockResponse = await fetch('/api/mock-auth');
-          if (!mockResponse.ok) {
-            throw new Error('Failed to complete mock authentication');
-          }
-          const mockData = await mockResponse.json();
-          console.log('Mock auth response:', mockData);
-          
-          // Store mock tokens in localStorage
-          localStorage.setItem('stravaTokens', JSON.stringify({
-            accessToken: mockData.access_token,
-            refreshToken: mockData.refresh_token,
-            expiresAt: mockData.expires_at
-          }));
-          
-          // Update authentication state
-          localStorage.setItem('isAuthenticated', 'true');
-          
-          // Use navigate for programmatic navigation
-          window.location.href = '/dashboard';
-        } else {
-          // Real Strava auth - redirect to Strava
-          window.location.href = data.authUrl;
-        }
+        console.log('Redirecting to Strava auth URL');
+        window.location.href = data.authUrl;
       } else {
-        throw new Error('Invalid response from server');
+        throw new Error('Invalid response from server: missing authUrl');
       }
     } catch (error) {
-      console.error('Failed to initiate Strava auth:', error);
+      console.error('Strava connection error:', error);
       setError(error instanceof Error ? error.message : 'Failed to connect with Strava');
-    } finally {
       setLoading(false);
     }
   };
